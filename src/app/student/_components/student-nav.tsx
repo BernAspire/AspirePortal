@@ -21,7 +21,7 @@ function Item({ item, pathname }: { item: NavItem; pathname: string }) {
       </span>
     );
   }
-  const active = pathname === item.href;
+  const active = isActive(item.href, pathname);
   return (
     <Link
       href={item.href}
@@ -38,14 +38,29 @@ function Item({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-/** The portal menu, shared by the desktop sidebar and the mobile menu. */
+/** Home matches exactly; other items also match their sub-pages (e.g. a lesson under Learn). */
+function isActive(href: string | undefined, pathname: string): boolean {
+  if (!href) return false;
+  if (href === HOME_ITEM.href) return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/** The portal menu, highlighting the current page. Render inside <Suspense>. */
 export function StudentNav() {
-  const pathname = usePathname();
+  return <StudentNavList pathname={usePathname()} />;
+}
+
+/** The same menu without highlighting, shown while the current address is read. */
+export function StudentNavFallback() {
+  return <StudentNavList pathname="" />;
+}
+
+function StudentNavList({ pathname }: { pathname: string }) {
   return (
     <nav aria-label="Student portal" className="flex flex-1 flex-col gap-0.5">
       <Item item={HOME_ITEM} pathname={pathname} />
       {NAV_GROUPS.map((group) => {
-        const open = group.items.some((i) => i.href === pathname);
+        const open = group.items.some((i) => isActive(i.href, pathname));
         return (
           <details key={group.label} open={open} className="group/navgroup">
             <summary

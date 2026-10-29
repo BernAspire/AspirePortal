@@ -1,0 +1,68 @@
+name: Import lessons
+
+# Imports the PowerPoint / Word / PDF files waiting in the Supabase `lesson-inbox` bucket.
+# Run it from GitHub: Actions → Import lessons → Run workflow.
+#
+# File names decide where each file goes, e.g.
+#   P5 - Mathematics - Worksheet 01 - Numbers to 10 Million.pptx              → lesson slides
+#   P5 - Mathematics - Worksheet 01 - Numbers to 10 Million - Questions.docx  → worksheet
+#
+# Needs repository secrets: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
+# The service-role key is used only by this job (CLAUDE.md rule 5).
+
+on:
+  workflow_dispatch:
+    inputs:
+      centre:
+        description: "Centre slug (as in the centres table), e.g. aspire-hub"
+        required: true
+        type: string
+      draft:
+        description: "Import as drafts (students can't see them yet)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: import-lessons
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error title=Missing secrets::Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Install converters and fonts
+        run: |
+          sudo apt-get update -qq
+          # LibreOffice for PowerPoint/Word → PDF; Poppler to render pages; fonts that match
+          # the centre's files (Inter, Times New Roman and Calibri equivalents, emoji).
+          sudo apt-get install -y -qq --no-install-recommends \
+            libreoffice-impress libreoffice-writer poppler-utils \
+            fonts-inter fonts-liberation fonts-crosextra-carlito fonts-dejavu fonts-noto-color-emoji
+          pip install --quiet "python-pptx==1.0.2" "pillow==11.3.0"
+
+      - name: Test importer rules
+        working-directory: scripts/lesson_import
+        run: python3 -m unittest -q
+
+      - name: Import
+        working-directory: scripts/lesson_import
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CENTRE: ${{ inputs.centre }}
+        run: |
+          python3 import_lessons.py inbox --centre "$CENTRE" ${{ inputs.draft && '--draft' || '' }}

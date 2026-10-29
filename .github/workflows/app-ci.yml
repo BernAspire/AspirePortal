@@ -42,6 +42,10 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      - name: Lesson importer rules
+        working-directory: scripts/lesson_import
+        run: python3 -m unittest -q
+
       - name: Build
         run: pnpm build
 

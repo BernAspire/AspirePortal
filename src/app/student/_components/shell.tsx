@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 
 import { CentreWordmark, ProfileCard, ProfileSkeleton, type SidebarProfile } from "./profile-card";
-import { StudentNav } from "./student-nav";
+import { StudentNav, StudentNavFallback } from "./student-nav";
 
 /**
  * The student portal frame from the Aspire Online design: a cream sidebar on
@@ -24,7 +24,9 @@ export function StudentShell({
       <aside className="sticky top-0 hidden h-svh w-[232px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-sidebar-border bg-sidebar px-3 py-[18px] md:flex">
         <div className="px-2 pb-1">{wordmarkSlot}</div>
         {profileSlot}
-        <StudentNav />
+        <Suspense fallback={<StudentNavFallback />}>
+                <StudentNav />
+              </Suspense>
         {signOutSlot}
       </aside>
 
@@ -43,7 +45,9 @@ export function StudentShell({
             </summary>
             <div className="flex max-h-[calc(100svh-3.5rem)] flex-col gap-3 overflow-y-auto border-t border-sidebar-border px-3 py-4">
               {profileSlot}
-              <StudentNav />
+              <Suspense fallback={<StudentNavFallback />}>
+                <StudentNav />
+              </Suspense>
               {signOutSlot}
             </div>
           </details>

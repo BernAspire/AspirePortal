@@ -10,6 +10,11 @@ test("a signed-out visitor to the student portal is sent to sign-in and back", a
   await expect(page.locator('input[name="next"]')).toHaveValue("/student");
 });
 
+test("lesson pages also require sign-in and return to the lesson", async ({ page }) => {
+  await page.goto("/student/learn/00000000-0000-4000-8000-000000000001?part=2");
+  await expect(page).toHaveURL(/\/sign-in\?next=%2Fstudent%2Flearn%2F00000000-0000-4000-8000-000000000001%3Fpart%3D2$/);
+});
+
 test("sign-in ignores an off-site return address", async ({ page }) => {
   await page.goto("/sign-in?next=//evil.example");
   await expect(page.locator('input[name="next"]')).toHaveValue("/start");

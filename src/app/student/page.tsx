@@ -6,9 +6,11 @@ import { requirePortal } from "@/lib/auth/session";
 import { formatSingapore, inSingapore, singaporeDate } from "@/lib/time";
 import { getCourses, getLevelName, getStudentCourses, getSubjects } from "@/modules/academics";
 import { getBranch, getMyStudent } from "@/modules/crm";
+import { getContinueLearning } from "@/modules/elearning";
 import { getActiveEntitlements } from "@/modules/programmes";
 
 import { HomeView } from "./_components/home-view";
+import { LEARN_PATH } from "./_components/nav-config";
 import { greetingFor, homeCourses, homeProgrammes, selectedSubjectId } from "./home-model";
 import { HomeSkeleton } from "./home-skeleton";
 
@@ -39,12 +41,13 @@ async function StudentHome({ searchParams }: { searchParams: PageProps<"/student
 
   const now = new Date();
   const today = singaporeDate(now);
-  const [entitlements, studentCourses, levelName, branch, params] = await Promise.all([
+  const [entitlements, studentCourses, levelName, branch, params, continueLearning] = await Promise.all([
     getActiveEntitlements(centre.centreId, student.id),
     getStudentCourses(centre.centreId, student.id),
     getLevelName(student.levelId),
     student.defaultBranchId ? getBranch(centre.centreId, student.defaultBranchId) : Promise.resolve(null),
     searchParams,
+    getContinueLearning(centre.centreId, student.id),
   ]);
 
   const courseIds = [...new Set(entitlements.flatMap((e) => e.courseIds))];
@@ -79,6 +82,17 @@ async function StudentHome({ searchParams }: { searchParams: PageProps<"/student
       courses={courses}
       programmes={homeProgrammes(entitlements, today)}
       branch={branch ? { ...branch, isDefault: true } : null}
+      learnHref={LEARN_PATH}
+      continueLearning={
+        continueLearning
+          ? {
+              eyebrow: `WEEK ${continueLearning.lessonPosition} · ${continueLearning.partTitle.toUpperCase()} · ${continueLearning.page} OF ${continueLearning.pageCount}`,
+              title: continueLearning.lessonTitle,
+              percent: Math.round((continueLearning.page / Math.max(continueLearning.pageCount, 1)) * 100),
+              href: `${LEARN_PATH}/${continueLearning.lessonId}?part=${continueLearning.partPosition}&page=${continueLearning.page}`,
+            }
+          : null
+      }
     />
   );
 }

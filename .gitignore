@@ -33,3 +33,6 @@ test-results/
 # typescript / certs
 *.tsbuildinfo
 *.pem
+
+# python
+__pycache__/
