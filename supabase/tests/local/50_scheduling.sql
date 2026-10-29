@@ -117,10 +117,34 @@ select test.expect_error($q$select public.apply_timetable('a0000000-0000-0000-00
 select test.expect_error($q$select public.apply_timetable('a0000000-0000-0000-0000-000000000000', jsonb_build_object('attendance', jsonb_build_array(
   jsonb_build_object('session', 'COACH-1', 'date', current_date + 3, 'client_code', '820F', 'status', 'present'))))$q$,
   'P0001', 'attendance: cannot be taken before the session starts');
+select test.expect_error($q$update public.class_sessions set teacher_user_id = 'bbbbbbbb-0000-0000-0000-000000000001' where code = 'COACH-1'$q$,
+  '23503', 'teachers: a centre B login cannot be linked as a centre A session''s teacher');
 select test.expect_error($q$insert into public.bookings (centre_id, session_id, student_id)
   select 'a0000000-0000-0000-0000-000000000000', s.id, 'b4000000-0000-0000-0000-000000000000'
   from public.class_sessions s where s.code = 'COACH-1'$q$,
   '23503', 'bookings: composite FK blocks booking a centre B student into a centre A session');
+
+
+-- History is never rewritten by a re-upload.
+select public.apply_timetable('a0000000-0000-0000-0000-000000000000',
+  jsonb_set(test.timetable(), '{one_offs,1,date}', to_jsonb(current_date + 5)));
+select test.expect((select count(*) from public.class_sessions where code = 'COACH-PAST' and starts_at < now()), 1,
+  'history: re-uploading a past one-off with a new date leaves it where it was');
+select public.apply_timetable('a0000000-0000-0000-0000-000000000000', jsonb_build_object('cancellations', jsonb_build_array(
+  jsonb_build_object('class', 'COACH-PAST', 'date', current_date - 2, 'reason', 'Too late'))));
+select test.expect((select count(*) from public.class_sessions where code = 'COACH-PAST' and status = 'scheduled'), 1,
+  'history: a cancellation row for a session that already happened is ignored');
+select public.apply_timetable('a0000000-0000-0000-0000-000000000000', jsonb_build_object('cancellations', jsonb_build_array(
+  jsonb_build_object('class', 'COACH-1', 'date', current_date + 3, 'reason', 'Teacher unwell'))));
+select test.expect((select count(*) from public.class_sessions where code = 'COACH-1' and status = 'cancelled'), 1,
+  'cancel: a one-off can be cancelled');
+select public.apply_timetable('a0000000-0000-0000-0000-000000000000', test.timetable());
+select test.expect((select count(*) from public.class_sessions where code = 'COACH-1' and status = 'scheduled'), 1,
+  'cancel: re-uploading the one-off without the cancellation brings it back');
+select test.expect_error($q$select public.apply_timetable('a0000000-0000-0000-0000-000000000000', jsonb_build_object('one_offs', jsonb_build_array(
+  jsonb_build_object('code', 'P6SCI-SAT', 'course_id', 'c0000000-0000-0000-0000-000000000001', 'kind', 'academic_coaching',
+    'teacher', 'Mr Wee', 'date', current_date + 4, 'start_time', '20:00', 'duration', 30))))$q$,
+  'P0001', 'codes: a one-off cannot reuse a weekly class''s code');
 
 -- ---------------------------------------------------------------------------
 -- 3. Who sees what
@@ -136,6 +160,7 @@ select test.expect((select count(*) from public.bookings where student_id <> 'a4
   'student A sees no one else''s bookings');
 select test.expect((select count(*) from public.attendance_records), 1, 'student A sees her attendance');
 select test.expect((select count(*) from public.rooms), 2, 'student A sees her centre''s rooms');
+select test.expect((select count(*) from public.class_enrolments), 2, 'student A sees only her own two class places');
 commit;
 
 begin;
@@ -189,6 +214,10 @@ select test.login('bbbbbbbb-0000-0000-0000-000000000003');  -- Jayden, centre B
 set local role authenticated;
 select test.expect((select count(*) from public.class_sessions), 5, 'student B sees only centre B sessions');
 select test.expect((select count(*) from public.attendance_records), 0, 'student B sees no centre A attendance');
+select test.expect((select count(*) from public.class_enrolments where centre_id = 'a0000000-0000-0000-0000-000000000000'), 0,
+  'student B sees no centre A class places');
+select test.expect((select count(*) from public.classes where centre_id = 'a0000000-0000-0000-0000-000000000000'), 0,
+  'student B sees no centre A classes');
 commit;
 
 begin;
@@ -239,5 +268,25 @@ select test.expect((select count(*) from public.class_sessions s where s.code = 
   'join: no link once the programme has expired (rule 12)');
 commit;
 update public.programme_enrolments set valid_until = current_date + 60 where student_id = 'a4000000-0000-0000-0000-000000000000';
+
+
+-- ---------------------------------------------------------------------------
+-- 5. Two classes can swap teachers (or rooms) at the same time in one upload
+-- ---------------------------------------------------------------------------
+create function test.pair(p_first text, p_second text) returns jsonb language sql as $$
+  select jsonb_build_object('classes', jsonb_build_array(
+    jsonb_build_object('code', 'SWAP-1', 'course_id', 'c0000000-0000-0000-0000-000000000001', 'kind', 'live_tutorial',
+      'teacher', p_first, 'weekday', test.dow(), 'start_time', '14:00', 'duration', 60,
+      'first_date', current_date, 'last_date', current_date + 20),
+    jsonb_build_object('code', 'SWAP-2', 'course_id', 'c0000000-0000-0000-0000-000000000001', 'kind', 'live_tutorial',
+      'teacher', p_second, 'weekday', test.dow(), 'start_time', '14:00', 'duration', 60,
+      'first_date', current_date, 'last_date', current_date + 20)));
+$$;
+select public.apply_timetable('a0000000-0000-0000-0000-000000000000', test.pair('T One', 'T Two'));
+select public.apply_timetable('a0000000-0000-0000-0000-000000000000', test.pair('T Two', 'T One'));
+select test.expect((select count(*) from public.class_sessions s join public.classes c on c.id = s.class_id
+  where c.code = 'SWAP-1' and s.teacher_name = 'T Two'), 3, 'swap: teachers swapped between two classes at the same time');
+select test.expect_error($q$select public.apply_timetable('a0000000-0000-0000-0000-000000000000', test.pair('T One', 'T One'))$q$,
+  'P0001', 'swap: the same teacher in both classes is still refused');
 
 select 'ALL SCHEDULING TESTS PASSED' as result;

@@ -102,10 +102,10 @@ create table public.class_sessions (
   foreign key (centre_id, branch_id, room_id) references public.rooms (centre_id, branch_id, id),
   constraint class_sessions_room_clash exclude using gist (
     room_id with =, tstzrange(starts_at, ends_at) with &&
-  ) where (status = 'scheduled' and room_id is not null),
+  ) where (status = 'scheduled' and room_id is not null) deferrable initially immediate,
   constraint class_sessions_teacher_clash exclude using gist (
     centre_id with =, lower(teacher_name) with =, tstzrange(starts_at, ends_at) with &&
-  ) where (status = 'scheduled')
+  ) where (status = 'scheduled') deferrable initially immediate
 );
 create index class_sessions_centre_time_idx on public.class_sessions (centre_id, starts_at);
 comment on table public.class_sessions is 'A dated, scheduled occurrence (physical tutorial, live tutorial, academic coaching).';
@@ -163,6 +163,29 @@ create trigger classes_course_check before insert or update of course_id, centre
   for each row execute function app.check_lesson_course();
 create trigger class_sessions_course_check before insert or update of course_id, centre_id on public.class_sessions
   for each row execute function app.check_lesson_course();
+
+-- A linked teacher login must be a teacher (or staff) of the same centre.
+create or replace function app.check_teacher_member()
+returns trigger
+language plpgsql security definer
+set search_path = ''
+as $$
+begin
+  if new.teacher_user_id is not null and not exists (
+    select 1 from public.centre_memberships m
+    where m.centre_id = new.centre_id and m.user_id = new.teacher_user_id
+      and m.role in ('teacher', 'staff', 'admin', 'owner')
+  ) then
+    raise exception 'teacher % is not a member of centre %', new.teacher_user_id, new.centre_id
+      using errcode = 'foreign_key_violation';
+  end if;
+  return new;
+end;
+$$;
+create trigger classes_teacher_check before insert or update of teacher_user_id, centre_id on public.classes
+  for each row execute function app.check_teacher_member();
+create trigger class_sessions_teacher_check before insert or update of teacher_user_id, centre_id on public.class_sessions
+  for each row execute function app.check_teacher_member();
 
 -- Attendance can only be taken once a session has started, and never for a cancelled one.
 create or replace function app.check_attendance_session()
@@ -300,13 +323,14 @@ declare
   v_n_classes int := 0; v_n_sessions int := 0; v_n_removed int := 0; v_n_one_offs int := 0;
   v_n_cancel  int := 0; v_n_roster int := 0; v_n_attend int := 0; v_n_bookings int := 0;
   v_count     int;
+  v_clash     text;
 begin
   select c.timezone into v_tz from public.centres c where c.id = p_centre;
   if v_tz is null then raise exception 'No centre with id %', p_centre; end if;
   v_today := (v_now at time zone v_tz)::date;
 
-  -- Resolve a branch name (case-insensitive) and room name, creating the room if new.
-  -- Inline helpers are written out in each loop below to keep this one function.
+  -- Clashes are checked once at the end, so two classes can swap rooms or teachers in one upload.
+  set constraints public.class_sessions_room_clash, public.class_sessions_teacher_clash deferred;
 
   -- 1. Classes ---------------------------------------------------------------
   for r in
@@ -326,6 +350,9 @@ begin
       select rm.id into v_room from public.rooms rm where rm.centre_id = p_centre and rm.branch_id = v_branch and lower(rm.name) = lower(trim(r.room));
     end if;
 
+    if exists (select 1 from public.class_sessions s where s.centre_id = p_centre and s.code = r.code) then
+      raise exception 'Class %: this code is already used by a one-off session', r.code;
+    end if;
     insert into public.classes as c (centre_id, code, course_id, kind, branch_id, room_id, teacher_name, weekday,
                                      start_time, duration_minutes, first_date, last_date, capacity, meeting_url, status)
     values (p_centre, r.code, r.course_id, r.kind, v_branch, v_room, trim(r.teacher), r.weekday,
@@ -356,7 +383,6 @@ begin
     end;
 
     -- Upcoming sessions: create or update; status resets so the Cancellations sheet decides.
-    begin
       insert into public.class_sessions as s (centre_id, class_id, course_id, kind, branch_id, room_id, teacher_name,
                                               starts_at, ends_at, capacity, meeting_url, status, cancel_reason)
       select p_centre, v_class, r.course_id, r.kind, v_branch, v_room, trim(r.teacher),
@@ -373,9 +399,6 @@ begin
         meeting_url = excluded.meeting_url, status = 'scheduled', cancel_reason = null;
       get diagnostics v_count = row_count;
       v_n_sessions := v_n_sessions + v_count;
-    exception when exclusion_violation then
-      raise exception 'Class %: clashes with another session in the same room or with the same teacher (%)', r.code, sqlerrm;
-    end;
   end loop;
 
   -- 2. Rosters (each class listed here gets exactly these students) -----------
@@ -446,7 +469,17 @@ begin
       select rm.id into v_room from public.rooms rm where rm.centre_id = p_centre and rm.branch_id = v_branch and lower(rm.name) = lower(trim(r.room));
     end if;
 
-    begin
+    if exists (select 1 from public.classes c where c.centre_id = p_centre and c.code = r.code) then
+      raise exception 'One-off %: this code is already used by a weekly class', r.code;
+    end if;
+    -- A one-off that has already started is history: a re-upload leaves it as it is.
+    v_session := null;
+    select s.id into v_session from public.class_sessions s
+     where s.centre_id = p_centre and s.code = r.code and s.starts_at <= v_now;
+    if v_session is not null then
+      v_n_one_offs := v_n_one_offs + 1;
+      continue;
+    end if;
       insert into public.class_sessions as s (centre_id, code, course_id, kind, branch_id, room_id, teacher_name,
                                               starts_at, ends_at, capacity, meeting_url, status)
       values (p_centre, r.code, r.course_id, r.kind, v_branch, v_room, trim(r.teacher),
@@ -456,11 +489,8 @@ begin
       on conflict (centre_id, code) do update set
         course_id = excluded.course_id, kind = excluded.kind, branch_id = excluded.branch_id, room_id = excluded.room_id,
         teacher_name = excluded.teacher_name, starts_at = excluded.starts_at, ends_at = excluded.ends_at,
-        capacity = excluded.capacity, meeting_url = excluded.meeting_url
+        capacity = excluded.capacity, meeting_url = excluded.meeting_url, status = 'scheduled', cancel_reason = null
       returning s.id into v_session;
-    exception when exclusion_violation then
-      raise exception 'One-off %: clashes with another session in the same room or with the same teacher (%)', r.code, sqlerrm;
-    end;
     v_n_one_offs := v_n_one_offs + 1;
 
     if (select s.starts_at from public.class_sessions s where s.id = v_session) > v_now then
@@ -497,15 +527,22 @@ begin
       from public.classes c
      where c.centre_id = p_centre and c.code = r.class
        and s.centre_id = p_centre and s.class_id = c.id
-       and (s.starts_at at time zone v_tz)::date = r.date;
+       and (s.starts_at at time zone v_tz)::date = r.date and s.starts_at > v_now;
     get diagnostics v_count = row_count;
     if v_count = 0 then
       update public.class_sessions s
          set status = 'cancelled', cancel_reason = nullif(trim(coalesce(r.reason, '')), '')
-       where s.centre_id = p_centre and s.code = r.class and (s.starts_at at time zone v_tz)::date = r.date;
+       where s.centre_id = p_centre and s.code = r.class and (s.starts_at at time zone v_tz)::date = r.date
+         and s.starts_at > v_now;
       get diagnostics v_count = row_count;
     end if;
-    if v_count = 0 then raise exception 'Cancellation: no session of "%" on %', r.class, r.date; end if;
+    -- A session that has already started is history: an old cancellation row is ignored.
+    if v_count = 0 and not exists (
+      select 1 from public.class_sessions s left join public.classes c on c.centre_id = s.centre_id and c.id = s.class_id
+       where s.centre_id = p_centre and (c.code = r.class or s.code = r.class) and (s.starts_at at time zone v_tz)::date = r.date
+    ) then
+      raise exception 'Cancellation: no session of "%" on %', r.class, r.date;
+    end if;
     v_n_cancel := v_n_cancel + v_count;
   end loop;
 
@@ -544,7 +581,7 @@ begin
   select s.id into v_session
     from public.class_sessions s
     join public.bookings b on b.centre_id = s.centre_id and b.session_id = s.id
-   where s.centre_id = p_centre and s.capacity is not null and s.starts_at > v_now
+   where s.centre_id = p_centre and s.capacity is not null and s.starts_at > v_now and s.status = 'scheduled'
    group by s.id, s.capacity
   having count(*) > s.capacity
    limit 1;
@@ -552,6 +589,27 @@ begin
     raise exception 'Too many students: a session on % has more bookings than its capacity',
       (select to_char(s.starts_at at time zone v_tz, 'YYYY-MM-DD HH24:MI') from public.class_sessions s where s.id = v_session);
   end if;
+
+  begin
+    set constraints public.class_sessions_room_clash, public.class_sessions_teacher_clash immediate;
+  exception when exclusion_violation then
+    -- Name the first clash so staff can find it in the spreadsheet.
+    select format('%s and %s on %s (%s)',
+                  coalesce(ca.code, a.code), coalesce(cb.code, b.code),
+                  to_char(a.starts_at at time zone v_tz, 'DD/MM/YYYY HH24:MI'),
+                  case when a.room_id = b.room_id then 'same room' else 'same teacher, ' || a.teacher_name end)
+      into v_clash
+      from public.class_sessions a
+      join public.class_sessions b on b.centre_id = a.centre_id and b.id > a.id
+       and tstzrange(a.starts_at, a.ends_at) && tstzrange(b.starts_at, b.ends_at)
+       and (a.room_id = b.room_id or lower(a.teacher_name) = lower(b.teacher_name))
+      left join public.classes ca on ca.centre_id = a.centre_id and ca.id = a.class_id
+      left join public.classes cb on cb.centre_id = b.centre_id and cb.id = b.class_id
+     where a.centre_id = p_centre and a.status = 'scheduled' and b.status = 'scheduled'
+     order by a.starts_at
+     limit 1;
+    raise exception 'Clash: % are at the same time. Change one of them and upload again.', coalesce(v_clash, 'two sessions');
+  end;
 
   return jsonb_build_object(
     'classes', v_n_classes, 'sessions_upserted', v_n_sessions, 'sessions_removed', v_n_removed,
