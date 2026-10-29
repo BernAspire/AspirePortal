@@ -207,7 +207,7 @@ as $$
              '(\d)[ ,](?=\d{3}(?!\d))', '\1', 'g'), '(\d)[ ,](?=\d{3}(?!\d))', '\1', 'g') as s
   )
   select coalesce(array_agg(m.v[1]::numeric order by m.n), '{}')
-  from norm, regexp_matches(norm.s, '(\d+(?:\.\d+)?)', 'g') with ordinality as m(v, n);
+  from norm, regexp_matches(norm.s, '((?:(?<![0-9])-)?\d+(?:\.\d+)?)', 'g') with ordinality as m(v, n);
 $$;
 
 create or replace function app.answer_letters(p text)
@@ -273,6 +273,19 @@ as $$
     where q.centre_id = p_centre and q.id = p_question and app.can_learn_course(p_centre, q.course_id));
 $$;
 
+-- The question was given to the caller (or their child) in a practice session.
+create or replace function app.in_my_practice(p_centre uuid, p_question uuid)
+returns boolean
+language sql stable security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1 from public.practice_items i
+    join public.practice_sessions s on s.centre_id = i.centre_id and s.id = i.session_id
+    where i.centre_id = p_centre and i.question_id = p_question
+      and s.student_id in (select app.family_student_ids(p_centre)));
+$$;
+
 -- The caller's own student record in a centre (students only; guardians don't practise for them).
 create or replace function app.my_student_id(p_centre uuid)
 returns uuid
@@ -328,7 +341,7 @@ begin
     group by q.section_id
   ),
   candidates as (
-    select q.id, q.group_ref, q.current_version,
+    select q.id, q.topic_id, q.group_ref, q.current_version,
            coalesce(acc.acc, 0.5) as section_acc,
            exists (select 1 from public.practice_attempts a
                    where a.centre_id = p_centre and a.student_id = v_student and a.question_id = q.id and a.correct) as solved,
@@ -340,7 +353,7 @@ begin
       and (coalesce(cardinality(p_difficulties), 0) = 0 or q.difficulty = any (p_difficulties))
   ),
   one_per_group as (
-    select distinct on (c.group_ref) c.* from candidates c order by c.group_ref, c.solved, c.r
+    select distinct on (c.topic_id, c.group_ref) c.* from candidates c order by c.topic_id, c.group_ref, c.solved, c.r
   ),
   picked as (
     select g.*, row_number() over (
@@ -415,7 +428,8 @@ begin
     if v_key #>> '{answer,kind}' = 'choice' then
       select jsonb_array_length(v.content -> 'choices') into v_choices from public.question_versions v
       where v.centre_id = v_centre and v.question_id = v_question and v.version = v_version;
-      if jsonb_typeof(p_response -> 'choice') is distinct from 'number' or (p_response ->> 'choice')::numeric not between 1 and v_choices then
+      if jsonb_typeof(p_response -> 'choice') is distinct from 'number' or (p_response ->> 'choice')::numeric not between 1 and v_choices
+         or (p_response ->> 'choice')::numeric <> trunc((p_response ->> 'choice')::numeric) then
         raise exception 'choose one of the options' using errcode = '22023';
       end if;
       p_response := jsonb_build_object('choice', (p_response ->> 'choice')::int);
@@ -519,6 +533,9 @@ declare
   v_q record;
   v_added int := 0; v_changed int := 0; v_same int := 0; v_retired int := 0;
 begin
+  if jsonb_typeof(p_data -> 'questions') is distinct from 'array' or jsonb_array_length(p_data -> 'questions') = 0 then
+    raise exception 'The file has no questions; nothing was changed.';
+  end if;
   insert into public.question_topics (centre_id, course_id, title)
   values (p_centre, p_course, trim(p_topic))
   on conflict (centre_id, course_id, lower(title)) do update set updated_at = now()
@@ -630,7 +647,8 @@ create policy question_sections_learner_select on public.question_sections for s
 create policy questions_staff on public.questions for all to authenticated
   using ((select app.is_staff(centre_id))) with check ((select app.is_staff(centre_id)));
 create policy questions_learner_select on public.questions for select to authenticated
-  using (status = 'active' and (select app.can_learn_course(centre_id, course_id)));
+  using ((select app.can_learn_course(centre_id, course_id))
+         and (status = 'active' or (select app.in_my_practice(centre_id, id))));
 
 create policy question_versions_staff on public.question_versions for all to authenticated
   using ((select app.is_staff(centre_id))) with check ((select app.is_staff(centre_id)));

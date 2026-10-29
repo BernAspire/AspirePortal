@@ -16,6 +16,11 @@ select test.expect(app.answer_part_matches('Six million, seventy-two thousand', 
   'marking: worded answers ignore case, spaces and punctuation');
 select test.expect(app.answer_part_matches('Four hundred and five', 'four hundred five')::int, 1, 'marking: "and" is optional');
 select test.expect(app.answer_part_matches('198 kg', '')::int, 0, 'marking: an empty answer is wrong');
+select test.expect(app.answer_part_matches('−5 °C', '5')::int, 0, 'marking: the sign of a negative number counts');
+select test.expect(app.answer_part_matches('−5 °C', '-5')::int, 1, 'marking: either minus sign works');
+select test.expect(app.answer_part_matches('3-4 days', '3 4')::int, 1, 'marking: a dash between numbers is not a minus');
+select test.expect(has_function_privilege('authenticated', 'app.practice_result(uuid, uuid, int)', 'execute')::int, 0,
+  'keys: the result helper is not callable by signed-in users');
 select test.expect(app.mark_answer('{"kind":"choice","correct":2}', '{"choice":2}')::int, 1, 'marking: the right option');
 select test.expect(app.mark_answer('{"kind":"choice","correct":2}', '{"choice":3}')::int, 0, 'marking: a wrong option');
 select test.expect(app.mark_answer('{"kind":"text","parts":[{"label":"a","text":"6 372 041"},{"label":"b","text":"405"}]}',
@@ -66,6 +71,8 @@ select test.expect((select current_version from public.questions where external_
 select test.expect((select count(*) from public.question_versions v join public.questions q on q.id = v.question_id where q.external_ref = '1.1a'), 2,
   'import: the old version is kept');
 select test.expect_error($q$update public.question_versions set content = content where version = 1$q$, '42501', 'versions are immutable');
+select test.expect_error($q$select public.import_question_bank('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001', 'Energy',
+  'centres/a0000000-0000-0000-0000-000000000000/x.html', repeat('c', 64), '{"sections":[]}')$q$, 'P0001', 'import: a file with no questions changes nothing');
 select test.expect_error($q$select public.import_question_bank('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001', 'Bad',
   'centres/a0000000-0000-0000-0000-000000000000/x.html', repeat('c', 64),
   jsonb_build_object('sections', '[{"number":1,"title":"S"}]'::jsonb, 'questions', jsonb_build_array(
@@ -181,6 +188,8 @@ insert into test.ids values ('s3', public.start_practice('a0000000-0000-0000-000
   'manual', (select array_agg(id) from public.question_sections where title = 'Heat' and centre_id = 'a0000000-0000-0000-0000-000000000000'), array[1], 5));
 select test.expect_error($q$select public.submit_practice_answer((select id from test.ids where name = 's3'), 1, '{"choice":9}')$q$, '22023',
   'submit: an option number out of range is refused');
+select test.expect_error($q$select public.submit_practice_answer((select id from test.ids where name = 's3'), 1, '{"choice":1.5}')$q$, '22023',
+  'submit: an option number must be whole');
 commit;
 begin;
 select test.login('aaaaaaaa-0000-0000-0000-000000000003');
@@ -208,6 +217,31 @@ select test.expect_error($q$select public.submit_practice_answer((select id from
   'student B cannot answer a centre A session');
 select test.expect_error($q$select public.start_practice('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001', 'manual', null, null, 5)$q$,
   '42501', 'student B cannot practise from centre A''s bank');
+commit;
+
+-- A second topic reusing the same group codes is still picked (groups are per topic).
+select public.import_question_bank('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001',
+  'Forces', 'centres/a0000000-0000-0000-0000-000000000000/question-bank/sources/f.html', repeat('e', 64), test.bank());
+begin;
+select test.login('aaaaaaaa-0000-0000-0000-000000000003');
+set local role authenticated;
+insert into test.ids values ('s4', public.start_practice('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001',
+  'manual', null, null, 30));
+select test.expect((select count(*) from public.practice_items where session_id = (select id from test.ids where name = 's4')), 6,
+  'practice: group codes repeat across topics without hiding questions (3 groups × 2 topics)');
+commit;
+-- Retiring "Forces" keeps its questions readable inside the session that gave them.
+select public.import_question_bank('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001',
+  'Forces', 'centres/a0000000-0000-0000-0000-000000000000/question-bank/sources/f2.html', repeat('f', 64),
+  jsonb_set(test.bank(), '{questions}', (test.bank() -> 'questions') - 0 - 0 - 0));
+begin;
+select test.login('aaaaaaaa-0000-0000-0000-000000000003');
+set local role authenticated;
+select test.expect((select count(*) from public.practice_items i join public.questions q on q.id = i.question_id
+  where i.session_id = (select id from test.ids where name = 's4')), 6, 'retired: questions already given in a session stay readable');
+select test.expect((select count(*) from public.questions q join public.question_topics t on t.id = q.topic_id
+  where t.title = 'Forces' and q.status = 'retired' and q.id not in (select question_id from public.practice_items)), 0,
+  'retired: retired questions not given to the student are hidden');
 commit;
 
 -- Entitlement and consent (rule 12; PDPA)
