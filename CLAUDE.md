@@ -18,7 +18,8 @@ Full plan (PRD, architecture, schema, security, gap analysis, roadmap): see the 
 > Status: BUILDING. Approved 29 Oct 2026: the student portal (plus the foundation it needs) is built in this repo with Claude; other portals are decided later.
 > Current phase: **Phase 0 — Foundation (student-portal track)**
 > Done: core tenancy and CRM/academic migrations with RLS; local tenant-isolation and student-portal read checks passing (`scripts/test-db-local.sh`); Next.js 16 app scaffold with Supabase clients, money/time helpers, unit tests and app CI (ADR 0002); email code sign-in, active centre, student shell and home page on real data (ADR 0003).
-> Next: owner completes Supabase sign-in setup (`docs/runbooks/supabase-auth-setup.md`) and tries a test student; then confirm Phase 1 scope.
+> Sign-in verified end to end on the Vercel preview with a test student (29 Oct 2026); email currently sent via a Gmail SMTP sender for testing only.
+> Next: merge PRs #1 and #2 after review; set up a domain email sender before real users; decide how young students without their own email sign in; confirm Phase 1 scope.
 
 ---
 
