@@ -88,9 +88,10 @@ The portal should keep this behaviour so marking matches what students and teach
 
 Each import creates a new `question_version` when any content field changes; older answers keep pointing at the version they were given.
 
-## Open questions for the owner
+## Owner decisions (29 Oct 2026)
 
-1. **Source references.** Questions cite school exam papers ("Ai Tong 2020 SA2 P1 Q1"). Should students see the source line, or only staff? (Default until answered: staff only.)
-2. **Variants b–e.** Are they the centre's own rewrites of each original question? This affects whether all five are shown to students and whether reusing the originals needs permission from the schools.
-3. **More files.** Which other topics/levels exist, and are they built the same way (one `BANK` JSON per page)?
-4. **Term.** The storage key says Term 1. Should questions be tagged by term so Practice can follow the school calendar?
+1. **Source references** are shown to students.
+2. **Variants b–e** are the centre's own rewrites of each original question; all five may be shown to students.
+3. **Other topic files** are built the same way (one `BANK` JSON per page). This file is a sample: the bank will grow to many topics across Primary 1–6 and Secondary 1–4, so the schema and importer must handle a large bank (tens of thousands of questions) with indexed filtering.
+4. **No term tags.** Questions are organised by course (subject × level), topic and section only.
+5. **Access** follows subscriptions: a student only sees questions for courses their active programme covers (CLAUDE.md rule 12).
