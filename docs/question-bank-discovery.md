@@ -90,7 +90,7 @@ Each import creates a new `question_version` when any content field changes; old
 
 ## Owner decisions (29 Oct 2026)
 
-1. **Source references** are shown to students.
+1. **Source references** are not shown to students (changed 30 Oct 2026; kept in the database for staff). Students see the bank's question number instead, e.g. Q1.4e.
 2. **Variants b–e** are the centre's own rewrites of each original question; all five may be shown to students.
 3. **Other topic files** are built the same way (one `BANK` JSON per page). This file is a sample: the bank will grow to many topics across Primary 1–6 and Secondary 1–4, so the schema and importer must handle a large bank (tens of thousands of questions) with indexed filtering.
 4. **No term tags.** Questions are organised by course (subject × level), topic and section only.

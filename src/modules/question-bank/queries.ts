@@ -79,7 +79,7 @@ export async function getQuestionVersions(
   const supabase = await createClient();
   const ids = [...new Set(items.map((i) => i.questionId))];
   const [{ data: qData, error: qError }, { data: vData, error: vError }] = await Promise.all([
-    supabase.from("questions").select("id, section_id, difficulty, strategy, marks, source_ref").eq("centre_id", centreId).in("id", ids),
+    supabase.from("questions").select("id, external_ref, section_id, difficulty, strategy, marks").eq("centre_id", centreId).in("id", ids),
     supabase.from("question_versions").select("question_id, version, content").eq("centre_id", centreId).in("question_id", ids),
   ]);
   if (qError || vError) throw new Error("Could not load the questions.");
@@ -101,7 +101,7 @@ export async function getQuestionVersions(
       difficulty: q.difficulty as Difficulty,
       strategy: q.strategy,
       marks: q.marks,
-      source: q.source_ref,
+      ref: q.external_ref,
       content: v.content,
     });
   }

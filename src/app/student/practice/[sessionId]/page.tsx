@@ -38,7 +38,7 @@ async function Session({ params }: { params: PageProps<"/student/practice/[sessi
   const questions: RunnerQuestion[] = data.items.flatMap((i) => {
     const v = versions.get(`${i.questionId}:${i.version}`);
     return v
-      ? [{ position: i.position, sectionTitle: v.sectionTitle, difficulty: v.difficulty, marks: v.marks, strategy: v.strategy, source: v.source, content: v.content }]
+      ? [{ position: i.position, sectionTitle: v.sectionTitle, difficulty: v.difficulty, marks: v.marks, strategy: v.strategy, ref: v.ref, content: v.content }]
       : [];
   });
 
