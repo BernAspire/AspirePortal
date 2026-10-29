@@ -1,0 +1,50 @@
+name: Import question bank
+
+# Imports the question bank pages waiting in the Supabase `question-inbox` bucket.
+# Name each file "P5 - Mathematics - Whole Numbers.html" (level - subject - topic).
+# Run it from GitHub: Actions → Import question bank → Run workflow.
+# Steps: docs/runbooks/import-question-bank.md.
+#
+# Needs repository secrets: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
+# The service-role key is used only by this job (CLAUDE.md rule 5).
+
+on:
+  workflow_dispatch:
+    inputs:
+      centre:
+        description: "Centre slug (as in the centres table), e.g. aspire-hub"
+        required: true
+        type: string
+
+concurrency:
+  group: import-question-bank
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check secrets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "::error title=Missing secrets::Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Test importer rules
+        working-directory: scripts/question_import
+        run: python3 -m unittest -q
+
+      - name: Import
+        working-directory: scripts/question_import
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CENTRE: ${{ inputs.centre }}
+        run: python3 import_bank.py inbox --centre "$CENTRE"

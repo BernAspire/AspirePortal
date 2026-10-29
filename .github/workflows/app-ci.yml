@@ -46,6 +46,10 @@ jobs:
         working-directory: scripts/lesson_import
         run: python3 -m unittest -q
 
+      - name: Question bank importer rules
+        working-directory: scripts/question_import
+        run: python3 -m unittest -q
+
       - name: Timetable importer rules
         working-directory: scripts/timetable_import
         run: |
