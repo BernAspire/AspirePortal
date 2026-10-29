@@ -1,6 +1,10 @@
 import { STUDENT_HOME_PATH } from "@/lib/auth/routing";
 
 export const LEARN_PATH = `${STUDENT_HOME_PATH}/learn`;
+export const MY_CLASSES_PATH = `${STUDENT_HOME_PATH}/classes`;
+export const TUTORIALS_PATH = `${STUDENT_HOME_PATH}/tutorials`;
+export const CALENDAR_PATH = `${STUDENT_HOME_PATH}/calendar`;
+export const ATTENDANCE_PATH = `${STUDENT_HOME_PATH}/attendance`;
 
 /**
  * The student portal's navigation, matching the Aspire Online design.
@@ -26,12 +30,12 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: "Classes",
     items: [
-      { label: "My Classes" },
+      { label: "My Classes", href: MY_CLASSES_PATH },
       { label: "Class Notes" },
       { label: "Homework" },
-      { label: "Tutorials" },
-      { label: "Calendar" },
-      { label: "Attendance" },
+      { label: "Tutorials", href: TUTORIALS_PATH },
+      { label: "Calendar", href: CALENDAR_PATH },
+      { label: "Attendance", href: ATTENDANCE_PATH },
     ],
   },
   {
