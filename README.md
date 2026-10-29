@@ -8,6 +8,8 @@ Project rules for anyone writing code here, including Claude, are in [CLAUDE.md]
 
 | Path | What it is |
 | --- | --- |
+| `src/` | The Next.js web app (student portal first). Start with `pnpm install` then `pnpm dev`. |
+| `.github/workflows/app-ci.yml` | Typecheck, lint, unit tests, build and a smoke test on every push and pull request. |
 | `supabase/migrations/` | Database schema. The only way the schema changes. Every table has row-level security (RLS). |
 | `supabase/tests/local/` | Tenant-isolation tests: prove one centre, family or student can never see another's data. |
 | `scripts/test-db-local.sh` | Runs all migrations and tests on a throwaway local Postgres database. |
@@ -30,7 +32,7 @@ Never paste these values into chat, issues or code.
 
 ### 2. Connect Vercel (after the app is added)
 
-In Vercel: **Add New → Project → Import** this repository. Set the region to Singapore (`sin1`). Add environment variables from Supabase **Project Settings → API**: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. The service-role key is added later, only when a server feature needs it, and only in Vercel.
+In Vercel: **Add New → Project → Import** this repository. Set the region to Singapore (`sin1`). Vercel detects Next.js and pnpm automatically. Add environment variables from Supabase **Project Settings → API**: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. The service-role key is added later, only when a server feature needs it, and only in Vercel.
 
 ## Running the database tests locally
 
@@ -38,4 +40,14 @@ Requires Postgres 16 or later.
 
 ```bash
 PGHOST=/tmp PGPORT=54329 PGUSER=postgres scripts/test-db-local.sh
+```
+
+## Running the app locally
+
+Requires Node 22+ and pnpm.
+
+```bash
+pnpm install
+cp .env.example .env.local   # then fill in the two Supabase values
+pnpm dev
 ```
