@@ -4,13 +4,18 @@ import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 
-import type { Course, StudentCourse } from "./service";
+import type { Course, StudentCourse, Subject } from "./service";
 
-const courseRow = z.object({
-  id: z.uuid(),
-  name: z.string(),
-  status: z.enum(["active", "suspended", "archived"]),
-});
+const courseRow = z
+  .object({
+    id: z.uuid(),
+    name: z.string(),
+    status: z.enum(["active", "suspended", "archived"]),
+    subject_id: z.uuid(),
+  })
+  .transform((r) => ({ id: r.id, name: r.name, status: r.status, subjectId: r.subject_id }));
+
+const subjectRow = z.object({ id: z.uuid(), code: z.string(), name: z.string(), sort: z.number().int() });
 
 const levelRow = z.object({ id: z.uuid(), name: z.string() });
 
@@ -22,10 +27,25 @@ export async function getCourses(courseIds: readonly string[]): Promise<Course[]
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("courses")
-    .select("id, name, status")
+    .select("id, name, status, subject_id")
     .in("id", [...courseIds]);
   if (error) throw new Error("Could not load courses.");
   return z.array(courseRow).parse(data);
+}
+
+/** Subjects by id, in catalogue order. */
+export async function getSubjects(subjectIds: readonly string[]): Promise<Subject[]> {
+  if (subjectIds.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("subjects")
+    .select("id, code, name, sort")
+    .in("id", [...subjectIds]);
+  if (error) throw new Error("Could not load subjects.");
+  return z
+    .array(subjectRow)
+    .parse(data)
+    .sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "en-SG"));
 }
 
 export async function getLevelName(levelId: string | null): Promise<string | null> {

@@ -6,19 +6,25 @@ import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
-import { displayName } from "./service";
+import { displayName, initials } from "./service";
 
 const studentRow = z.object({
   id: z.uuid(),
   full_name: z.string(),
   preferred_name: z.string().nullable(),
   level_id: z.uuid().nullable(),
+  client_code: z.string(),
+  default_branch_id: z.uuid().nullable(),
 });
 
 export interface MyStudent {
   readonly id: string;
+  readonly fullName: string;
   readonly displayName: string;
+  readonly initials: string;
   readonly levelId: string | null;
+  readonly clientCode: string;
+  readonly defaultBranchId: string | null;
 }
 
 /**
@@ -33,7 +39,7 @@ export const getMyStudent = cache(async (centreId: string): Promise<MyStudent | 
 
   const { data, error } = await supabase
     .from("students")
-    .select("id, full_name, preferred_name, level_id")
+    .select("id, full_name, preferred_name, level_id, client_code, default_branch_id")
     .eq("centre_id", centreId)
     .eq("user_id", user.id)
     .is("deleted_at", null)
@@ -47,7 +53,33 @@ export const getMyStudent = cache(async (centreId: string): Promise<MyStudent | 
   const row = rows[0];
   return {
     id: row.id,
+    fullName: row.full_name,
     displayName: displayName(row.full_name, row.preferred_name),
+    initials: initials(row.full_name),
     levelId: row.level_id,
+    clientCode: row.client_code,
+    defaultBranchId: row.default_branch_id,
   };
+});
+
+const branchRow = z.object({
+  id: z.uuid(),
+  name: z.string(),
+  address: z.string().nullable(),
+  phone: z.string().nullable(),
+});
+
+export type Branch = z.infer<typeof branchRow>;
+
+/** A branch of the centre (members of the centre can read its branches). */
+export const getBranch = cache(async (centreId: string, branchId: string): Promise<Branch | null> => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("branches")
+    .select("id, name, address, phone")
+    .eq("centre_id", centreId)
+    .eq("id", branchId)
+    .maybeSingle();
+  if (error) throw new Error("Could not load your branch.");
+  return data ? branchRow.parse(data) : null;
 });
