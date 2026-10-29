@@ -1,10 +1,14 @@
 name: Deploy database migrations
 
-# Applies new files in supabase/migrations to the linked Supabase project when they reach
-# main. Needs three repository secrets (Settings > Secrets and variables > Actions):
-#   SUPABASE_ACCESS_TOKEN  - personal access token from supabase.com/dashboard/account/tokens
+# Applies new files in supabase/migrations to the Supabase project when they reach main.
+# Needs repository secrets (Settings > Secrets and variables > Actions):
 #   SUPABASE_PROJECT_ID    - the project's reference id (Project Settings > General)
-#   SUPABASE_DB_PASSWORD   - the database password chosen when the project was created
+#   SUPABASE_DB_PASSWORD   - the database password (Database > Settings > Reset database password)
+#   SUPABASE_ACCESS_TOKEN  - personal access token (kept for future CLI steps; not needed to push)
+# Optional repository variable SUPABASE_REGION (default ap-southeast-1, Singapore).
+#
+# GitHub runners have no IPv6, and Supabase's direct database host is IPv6-only, so the push
+# goes through the IPv4 session pooler (Supavisor) on port 5432.
 # The job is skipped until SUPABASE_PROJECT_ID is set.
 
 on:
@@ -17,15 +21,15 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      SUPABASE_REGION: ${{ vars.SUPABASE_REGION || 'ap-southeast-1' }}
     steps:
       - name: Check configuration
         id: cfg
         run: |
-          if [ -z "$SUPABASE_PROJECT_ID" ]; then
-            echo "SUPABASE_PROJECT_ID secret not set; skipping deploy."
+          if [ -z "$SUPABASE_PROJECT_ID" ] || [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "SUPABASE_PROJECT_ID or SUPABASE_DB_PASSWORD not set; skipping deploy."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -36,19 +40,26 @@ jobs:
         if: steps.cfg.outputs.ready == 'true'
         with:
           version: latest
-      - name: Push migrations
+      - name: Push migrations through the session pooler
         if: steps.cfg.outputs.ready == 'true'
         run: |
-          set -o pipefail
           report() {
             # Surface the last lines as an annotation so the failure is readable without the raw log.
-            tail -n 15 "$1" | sed -e 's/%/%25/g' | tr '\n' '|' | sed 's/|/%0A/g' | xargs -0 -I{} echo "::error title=$2::{}"
+            tail -n 15 "$1" | sed -e 's/%/%25/g' | tr '\n' '|' | sed 's/|/%0A/g' | xargs -0 -I{} echo "::$3 title=$2::{}"
           }
-          if ! supabase link --project-ref "$SUPABASE_PROJECT_ID" > link.log 2>&1; then
-            cat link.log; report link.log "supabase link failed"; exit 1
+          ENC_PW="$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SUPABASE_DB_PASSWORD"], safe=""))')"
+          echo "::add-mask::$ENC_PW"
+          ok=false
+          for host in "aws-0-${SUPABASE_REGION}.pooler.supabase.com" "aws-1-${SUPABASE_REGION}.pooler.supabase.com"; do
+            url="postgresql://postgres.${SUPABASE_PROJECT_ID}:${ENC_PW}@${host}:5432/postgres"
+            if supabase db push --db-url "$url" --include-all > push.log 2>&1 < /dev/null; then
+              ok=true
+              report push.log "Migrations applied via ${host}" notice
+              break
+            fi
+            report push.log "Push via ${host} failed" warning
+          done
+          if [ "$ok" != true ]; then
+            echo "::error title=supabase db push failed::Could not apply migrations through either pooler host. See the warnings above."
+            exit 1
           fi
-          tail -n 15 link.log | sed -e 's/%/%25/g' | tr '\n' '|' | sed 's/|/%0A/g' | xargs -0 -I{} echo "::notice title=supabase link output::{}"
-          if ! supabase db push --linked --include-all > push.log 2>&1 < /dev/null; then
-            cat push.log; report push.log "supabase db push failed"; exit 1
-          fi
-          cat push.log
