@@ -13,7 +13,8 @@ export interface RunnerQuestion {
   readonly difficulty: Difficulty;
   readonly marks: number | null;
   readonly strategy: string | null;
-  readonly source: string | null;
+  /** The bank's question number, e.g. "1.4e". */
+  readonly ref: string;
   readonly content: QuestionContent;
 }
 
@@ -119,13 +120,13 @@ export function PracticeRunner(props: PracticeRunnerProps) {
       {q ? (
         <article className="flex flex-col gap-4 rounded-[14px] border border-border bg-card p-5" aria-labelledby="q-title">
           <div className="flex flex-wrap items-center gap-2 text-xs">
-            <h2 id="q-title" className="mr-auto text-[13px] font-semibold text-[#3D4146]">
-              {q.sectionTitle}
+            <h2 id="q-title" className="mr-auto flex flex-wrap items-baseline gap-x-2 text-[13px] font-semibold text-[#3D4146]">
+              <span className="rounded-md bg-foreground px-2 py-0.5 text-sm font-bold tabular-nums text-white">Q{q.ref}</span>
+              <span>{q.sectionTitle}</span>
             </h2>
             <span className={cn("rounded-full px-2.5 py-0.5 font-semibold", DIFF_STYLE[q.difficulty])}>{DIFFICULTY_LABEL[q.difficulty]}</span>
             {q.marks ? <span className="rounded-full bg-secondary px-2.5 py-0.5 font-semibold">{q.marks} marks</span> : null}
           </div>
-          {q.source ? <p className="-mt-2 text-xs text-muted-foreground">Practice for: {q.source}</p> : null}
 
           <QuestionBlocks blocks={q.content.blocks} />
 

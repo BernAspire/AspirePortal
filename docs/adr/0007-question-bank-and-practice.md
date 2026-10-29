@@ -4,7 +4,7 @@ Date: 29 Oct 2026 · Status: accepted pending owner approval of the migration (P
 
 ## Context
 
-The centre's question banks are single HTML pages, one per topic, holding questions as a `const BANK = {...}` JSON literal (`docs/question-bank-discovery.md`). The owner decided: source lines are shown to students, variants b–e are the centre's rewrites, all banks share the format, the bank will grow to many topics across P1–6 and S1–4, no term tags, and students only see what their programme covers.
+The centre's question banks are single HTML pages, one per topic, holding questions as a `const BANK = {...}` JSON literal (`docs/question-bank-discovery.md`). The owner decided: students see each question's number (e.g. Q1.4e) but not its exam source line (stored for staff only), variants b–e are the centre's rewrites, all banks share the format, the bank will grow to many topics across P1–6 and S1–4, no term tags, and students only see what their programme covers.
 
 ## Decisions
 

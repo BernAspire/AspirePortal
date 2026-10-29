@@ -21,11 +21,11 @@ export const topicRow = z.object({ id: z.uuid(), course_id: z.uuid(), title: z.s
 export const sectionRow = z.object({ id: z.uuid(), topic_id: z.uuid(), number: z.number().int(), title: z.string() });
 export const questionRow = z.object({
   id: z.uuid(),
+  external_ref: z.string(),
   section_id: z.uuid(),
   difficulty: z.number().int().min(1).max(3),
   strategy: z.string().nullable(),
   marks: z.number().int().nullable(),
-  source_ref: z.string().nullable(),
 });
 export const versionRow = z.object({ question_id: z.uuid(), version: z.number().int(), content: contentSchema });
 
@@ -43,10 +43,11 @@ export interface PracticeTopic {
 
 export interface QuestionView {
   readonly id: string;
+  /** The bank's question number, e.g. "1.4e". */
+  readonly ref: string;
   readonly sectionTitle: string;
   readonly difficulty: Difficulty;
   readonly strategy: string | null;
   readonly marks: number | null;
-  readonly source: string | null;
   readonly content: QuestionContent;
 }
