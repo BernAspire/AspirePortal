@@ -1,10 +1,10 @@
 # Supabase sign-in setup (one time, owner)
 
-The portal signs people in with a one-time code sent by email. Supabase needs four settings changed before this works. All are in the Supabase dashboard for the project.
+The portal signs people in with a one-time code sent by email. Two settings must change before this works, and one more before real users. All are in the Supabase dashboard for the project.
 
 ## 1. Send a code, not a link
 
-**Authentication → Emails → Templates → Magic Link.** Replace the body so it shows the code:
+**Authentication → Emails → Templates → Magic Link** (direct link: `https://supabase.com/dashboard/project/_/auth/templates/magic-link-or-otp`). Replace the body so it shows the code:
 
 - Subject: `Your Aspire Portal sign-in code`
 - Body (HTML):
@@ -22,9 +22,9 @@ The template must contain `{{ .Token }}`. Without it, Supabase sends a link, whi
 
 **Authentication → Sign In / Providers → User Signups:** turn off **Allow new users to sign up**. Centres create accounts; nobody can create their own. The app also asks Supabase not to create users, so this is a second lock.
 
-## 3. Set how long codes last
+## 3. Leave code expiry at the default
 
-**Authentication → Sign In / Providers → Email:** set **Email OTP Expiration** to `600` seconds (10 minutes) and leave **Email OTP Length** at `6`. The app accepts 6–10 digits, so a later change won't break it.
+**Authentication → Sign In / Providers → Email → Email OTP Expiration:** leave it at `3600` seconds (1 hour). This one setting also controls confirmation and invitation links, so a short value would break invitations later. Supabase lets an address request a new code only once every 60 seconds.
 
 ## 4. Use your own email sender before real users
 
