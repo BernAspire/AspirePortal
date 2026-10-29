@@ -17,8 +17,8 @@ Full plan (PRD, architecture, schema, security, gap analysis, roadmap): see the 
 
 > Status: BUILDING. Approved 29 Oct 2026: the student portal (plus the foundation it needs) is built in this repo with Claude; other portals are decided later.
 > Current phase: **Phase 0 — Foundation (student-portal track)**
-> Done: core tenancy and CRM/academic migrations with RLS; 35 local tenant-isolation checks passing (`scripts/test-db-local.sh`).
-> Next: Next.js app scaffold (blocked until npm access is enabled), email OTP sign-in, student shell and home page on real data.
+> Done: core tenancy and CRM/academic migrations with RLS; 35 local tenant-isolation checks passing (`scripts/test-db-local.sh`); Next.js 16 app scaffold with Supabase clients, money/time helpers, unit tests and app CI (ADR 0002).
+> Next: email OTP sign-in, student shell and home page on real data.
 
 ---
 
@@ -124,28 +124,31 @@ docs/                          ADRs, discovery report, runbooks
 - Canonical content is structured JSON blocks; original HTML is kept for traceability.
 - One renderer (`modules/question-bank/render`) serves both screen and PDF. Any change to it must pass the golden-set visual regression test.
 
-## Commands (to be confirmed in Phase 0)
+## Commands
 
-Working today:
-
-```
-PGHOST=/tmp PGPORT=54329 PGUSER=postgres scripts/test-db-local.sh   # migrations + RLS tests on a local Postgres 16
-```
-
-Local DB tests use `supabase/tests/local/00_supabase_shim.sql` to stand in for Supabase's `auth` schema and roles. It is never applied to Supabase. CI runs the same script (`.github/workflows/db-tests.yml`); `.github/workflows/db-deploy.yml` pushes migrations to Supabase once the repository secrets are set.
-
-Planned once the app is scaffolded:
+Package manager: pnpm (version pinned in `package.json`). Node 22+.
 
 ```
-pnpm dev                 # Next.js + local Supabase
-pnpm typecheck
-pnpm lint
-pnpm test                # Vitest
-pnpm test:db             # supabase test db (pgTAP, incl. cross-tenant suite)
-pnpm test:e2e            # Playwright
+pnpm install
+pnpm dev                 # Next.js dev server (needs .env.local, see .env.example)
+pnpm typecheck           # next typegen + tsc
+pnpm lint                # ESLint, zero warnings allowed
+pnpm test                # Vitest unit tests (run with TZ=UTC)
+pnpm build               # production build
+pnpm test:e2e            # Playwright smoke tests against `pnpm start` (run `pnpm build` first)
+PGHOST=/tmp PGPORT=54329 PGUSER=postgres pnpm test:db   # migrations + RLS tests on a local Postgres 16
+```
+
+Local DB tests use `supabase/tests/local/00_supabase_shim.sql` to stand in for Supabase's `auth` schema and roles. It is never applied to Supabase. CI runs the same script (`.github/workflows/db-tests.yml`); `.github/workflows/db-deploy.yml` pushes migrations to Supabase once the repository secrets are set. `.github/workflows/app-ci.yml` runs typecheck, lint, unit tests, build and the Playwright smoke test on every pull request.
+
+Planned:
+
+```
 pnpm db:types            # regenerate Supabase types after a migration
 supabase migration new <name>
 ```
+
+App notes (see ADR 0002): Next.js 16 with Cache Components; middleware is `src/proxy.ts` and only refreshes the session; anything reading cookies renders inside `<Suspense>`. Read the bundled guides in `node_modules/next/dist/docs/` before using a Next.js API you are unsure of (see `AGENTS.md`).
 
 ## Definition of done (every change)
 
