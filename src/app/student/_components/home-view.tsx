@@ -17,6 +17,13 @@ export interface HomeViewProps {
   readonly courses: readonly HomeCourse[];
   readonly programmes: readonly HomeProgramme[];
   readonly branch: { name: string; address: string | null; phone: string | null; isDefault: boolean } | null;
+  readonly continueLearning: {
+    readonly eyebrow: string;
+    readonly title: string;
+    readonly percent: number;
+    readonly href: string;
+  } | null;
+  readonly learnHref: string;
 }
 
 /** The student home page from the Aspire Online design. Presentational only. */
@@ -79,11 +86,43 @@ export function HomeView(props: HomeViewProps) {
           />
 
           <SectionTitle>Continue learning</SectionTitle>
-          <ComingSoon
-            tone="brand"
-            title="Lessons and notes"
-            text="Your centre's lessons, notes and videos for each course will appear here."
-          />
+          {props.continueLearning ? (
+            <section className="flex flex-wrap items-center justify-between gap-3.5 rounded-[14px] border border-[#F6E3A6] bg-brand-wash p-[18px]">
+              <div className="min-w-0">
+                <p className="text-[11.5px] font-bold tracking-[.06em] text-[#7A4B00]">{props.continueLearning.eyebrow}</p>
+                <h3 className="mt-1 text-[17px] font-semibold">{props.continueLearning.title}</h3>
+                <div
+                  role="progressbar"
+                  aria-label="Progress in this lesson part"
+                  aria-valuenow={props.continueLearning.percent}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  className="mt-2 h-1.5 w-[260px] max-w-full rounded-full bg-[#F3DFA0]"
+                >
+                  <div className="h-full rounded-full bg-brand-strong" style={{ width: `${props.continueLearning.percent}%` }} />
+                </div>
+              </div>
+              <Link
+                href={props.continueLearning.href}
+                className="inline-flex min-h-11 items-center rounded-full bg-brand px-5 text-sm font-semibold hover:bg-brand-strong outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                Continue lesson
+              </Link>
+            </section>
+          ) : (
+            <section className="flex flex-wrap items-center justify-between gap-3.5 rounded-[14px] border border-[#F6E3A6] bg-brand-wash p-[18px]">
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold">Lessons and notes</h3>
+                <p className="text-[13px] text-[#3D4146]">Slides, worksheets and notes for each week of your courses.</p>
+              </div>
+              <Link
+                href={props.learnHref}
+                className="inline-flex min-h-11 items-center rounded-full bg-brand px-5 text-sm font-semibold hover:bg-brand-strong outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                Start learning
+              </Link>
+            </section>
+          )}
 
           <SectionTitle>Practice</SectionTitle>
           <ComingSoon title="Practice sessions" text="Adaptive practice on your weak topics, with your scores over time." />

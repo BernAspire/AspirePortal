@@ -16,10 +16,9 @@ Full plan (PRD, architecture, schema, security, gap analysis, roadmap): see the 
 - **Booking** = a student's seat in a session.
 
 > Status: BUILDING. Approved 29 Oct 2026: the student portal (plus the foundation it needs) is built in this repo with Claude; other portals are decided later.
-> Current phase: **Phase 0 — Foundation (student-portal track)**
-> Done: core tenancy and CRM/academic migrations with RLS; local tenant-isolation and student-portal read checks passing (`scripts/test-db-local.sh`); Next.js 16 app scaffold with Supabase clients, money/time helpers, unit tests and app CI (ADR 0002); email code sign-in, active centre, student shell and home page on real data (ADR 0003).
-> Sign-in verified end to end on the Vercel preview with a test student (29 Oct 2026); email currently sent via a Gmail SMTP sender for testing only.
-> Next: merge PRs #1 and #2 after review; set up a domain email sender before real users; decide how young students without their own email sign in; confirm Phase 1 scope.
+> Current phase: **S1 — Learn (student-portal track)**
+> Done: Phase 0 foundation (tenancy, RLS, sign-in, student shell in the Aspire Online design); S1 schema (lessons, online-form consent, PIN lockout, lesson files); lesson importer (PowerPoint/Word → page images, GitHub job); Learn page, lesson viewer with hidden worked solutions, progress, Continue learning.
+> Next: import real lessons via `docs/runbooks/import-lessons.md`; student username + PIN sign-in screen; domain email sender before real users; question bank (waiting on the bank's source file).
 
 ---
 
@@ -138,6 +137,8 @@ pnpm test                # Vitest unit tests (run with TZ=UTC)
 pnpm build               # production build
 pnpm test:e2e            # Playwright smoke tests against `pnpm start` (run `pnpm build` first)
 PGHOST=/tmp PGPORT=54329 PGUSER=postgres pnpm test:db   # migrations + RLS tests on a local Postgres 16
+python3 -m unittest -q   # in scripts/lesson_import: importer naming rules
+python3 scripts/lesson_import/import_lessons.py build --out ./out FILES   # convert lessons locally (needs LibreOffice, Poppler, python-pptx, Pillow)
 ```
 
 Local DB tests use `supabase/tests/local/00_supabase_shim.sql` to stand in for Supabase's `auth` schema and roles. It is never applied to Supabase. CI runs the same script (`.github/workflows/db-tests.yml`); `.github/workflows/db-deploy.yml` pushes migrations to Supabase once the repository secrets are set. `.github/workflows/app-ci.yml` runs typecheck, lint, unit tests, build and the Playwright smoke test on every pull request.

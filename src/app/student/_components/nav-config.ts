@@ -1,5 +1,7 @@
 import { STUDENT_HOME_PATH } from "@/lib/auth/routing";
 
+export const LEARN_PATH = `${STUDENT_HOME_PATH}/learn`;
+
 /**
  * The student portal's navigation, matching the Aspire Online design.
  * Items without an `href` are not built yet and show as "Soon".
@@ -19,7 +21,7 @@ export const HOME_ITEM: NavItem = { label: "Home", href: STUDENT_HOME_PATH };
 export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: "Learn",
-    items: [{ label: "Learn" }, { label: "Practice" }, { label: "Mock Exams" }, { label: "Smart Revision" }],
+    items: [{ label: "Learn", href: LEARN_PATH }, { label: "Practice" }, { label: "Mock Exams" }, { label: "Smart Revision" }],
   },
   {
     label: "Classes",
