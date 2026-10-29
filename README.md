@@ -30,7 +30,11 @@ In GitHub: **Settings → Secrets and variables → Actions → New repository s
 
 Never paste these values into chat, issues or code.
 
-### 2. Connect Vercel (after the app is added)
+### 2. Set up sign-in in Supabase
+
+Follow [docs/runbooks/supabase-auth-setup.md](docs/runbooks/supabase-auth-setup.md) (email code template, sign-ups off, email sender). To try the portal, create a test student with [docs/runbooks/pilot-test-student.md](docs/runbooks/pilot-test-student.md).
+
+### 3. Connect Vercel (after the app is added)
 
 In Vercel: **Add New → Project → Import** this repository. Set the region to Singapore (`sin1`). Vercel detects Next.js and pnpm automatically. Add environment variables from Supabase **Project Settings → API**: `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`. The service-role key is added later, only when a server feature needs it, and only in Vercel.
 

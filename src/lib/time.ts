@@ -32,6 +32,20 @@ export function formatSingapore(
 }
 
 /**
+ * Formats a calendar date (`YYYY-MM-DD`, e.g. a Postgres `date`) for display,
+ * e.g. "31 Dec 2026". Pure string handling, so the machine's time zone can't
+ * shift the day.
+ */
+export function formatDateOnly(isoDate: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDate);
+  const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
+  if (!match || !month) throw new RangeError(`Not a YYYY-MM-DD date: "${isoDate}"`);
+  return `${Number(match[3])} ${month} ${match[1]}`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
  * Whether a validity window (Postgres `date` columns, inclusive) covers the
  * given instant's Singapore calendar date. `validTo` null means open-ended.
  */

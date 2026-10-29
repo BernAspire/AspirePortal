@@ -17,8 +17,8 @@ Full plan (PRD, architecture, schema, security, gap analysis, roadmap): see the 
 
 > Status: BUILDING. Approved 29 Oct 2026: the student portal (plus the foundation it needs) is built in this repo with Claude; other portals are decided later.
 > Current phase: **Phase 0 — Foundation (student-portal track)**
-> Done: core tenancy and CRM/academic migrations with RLS; 35 local tenant-isolation checks passing (`scripts/test-db-local.sh`); Next.js 16 app scaffold with Supabase clients, money/time helpers, unit tests and app CI (ADR 0002).
-> Next: email OTP sign-in, student shell and home page on real data.
+> Done: core tenancy and CRM/academic migrations with RLS; local tenant-isolation and student-portal read checks passing (`scripts/test-db-local.sh`); Next.js 16 app scaffold with Supabase clients, money/time helpers, unit tests and app CI (ADR 0002); email code sign-in, active centre, student shell and home page on real data (ADR 0003).
+> Next: owner completes Supabase sign-in setup (`docs/runbooks/supabase-auth-setup.md`) and tries a test student; then confirm Phase 1 scope.
 
 ---
 
@@ -40,8 +40,8 @@ Full plan (PRD, architecture, schema, security, gap analysis, roadmap): see the 
 src/
   app/
     (marketing)/               public pages
-    (auth)/                    sign-in, invite acceptance, centre picker
-    [portal]/                  admin | teacher | parent | student route groups
+    (auth)/                    sign-in, start (portal routing), centre picker, no-access
+    student/ (admin, teacher, parent later)   one top-level segment per portal
     platform/                  super-admin console
     api/                       route handlers: webhooks, jobs only
   modules/
@@ -56,8 +56,8 @@ src/
       components/              module UI
       index.ts                 the ONLY file other modules may import from
   lib/
-    supabase/                  server/browser clients, generated types
-    auth/                      session, active centre, capability checks
+    supabase/                  server/browser clients, proxy session refresh, generated types
+    auth/                      routing rules, active centre, session (requirePortal, requireUser)
     money.ts                   cents helpers, GST
     time.ts                    Asia/Singapore helpers
   components/ui/               shadcn components
