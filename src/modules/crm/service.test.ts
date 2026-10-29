@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import { displayName } from "./service";
+import { displayName, initials } from "./service";
+
+describe("initials", () => {
+  it("takes the first and last word", () => {
+    expect(initials("Chloe Tan")).toBe("CT");
+    expect(initials("aisha binte rahman")).toBe("AR");
+  });
+
+  it("handles one word or none", () => {
+    expect(initials("Aisha")).toBe("A");
+    expect(initials("   ")).toBe("?");
+  });
+});
 
 describe("displayName", () => {
   it("prefers the preferred name", () => {

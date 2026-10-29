@@ -1,42 +1,44 @@
-import Link from "next/link";
 import { Suspense } from "react";
-
-import { Button } from "@/components/ui/button";
-import { STUDENT_HOME_PATH } from "@/lib/auth/routing";
-import { requirePortal } from "@/lib/auth/session";
 
 import { signOut } from "../(auth)/actions";
 
+import { CentreWordmark, ProfileCard, ProfileSkeleton, StudentShell } from "./_components/shell";
+import { getShellProfile } from "./_data";
+
 export default function StudentLayout({ children }: LayoutProps<"/student">) {
   return (
-    <div className="flex min-h-full flex-1 flex-col">
-      <header className="border-b bg-background">
-        <div className="mx-auto flex h-14 w-full max-w-3xl items-center justify-between gap-3 px-4">
-          <Link href={STUDENT_HOME_PATH} className="truncate font-semibold tracking-tight">
-            Aspire Portal
-          </Link>
-          <Suspense fallback={<div className="h-8 w-24 rounded-md bg-muted" aria-hidden />}>
-            <HeaderAccount />
-          </Suspense>
-        </div>
-      </header>
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">{children}</main>
-    </div>
+    <StudentShell
+      wordmarkSlot={
+        <Suspense fallback={<span className="font-display text-[19px] font-bold">Portal</span>}>
+          <Wordmark />
+        </Suspense>
+      }
+      profileSlot={
+        <Suspense fallback={<ProfileSkeleton />}>
+          <Profile />
+        </Suspense>
+      }
+      signOutSlot={
+        <form action={signOut} className="px-0">
+          <button
+            type="submit"
+            className="flex min-h-11 w-full items-center rounded-[10px] px-3 text-left text-sm text-[#3D4146] outline-none hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            Sign out
+          </button>
+        </form>
+      }
+    >
+      {children}
+    </StudentShell>
   );
 }
 
-async function HeaderAccount() {
-  const { centre } = await requirePortal("student", STUDENT_HOME_PATH);
-  return (
-    <div className="flex min-w-0 items-center gap-2">
-      <span className="hidden truncate text-sm text-muted-foreground sm:inline">
-        {centre.centreName}
-      </span>
-      <form action={signOut}>
-        <Button type="submit" variant="ghost" size="sm">
-          Sign out
-        </Button>
-      </form>
-    </div>
-  );
+async function Wordmark() {
+  const profile = await getShellProfile();
+  return <CentreWordmark name={profile.centreName} />;
+}
+
+async function Profile() {
+  return <ProfileCard profile={await getShellProfile()} />;
 }

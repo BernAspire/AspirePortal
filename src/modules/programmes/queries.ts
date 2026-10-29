@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
@@ -12,12 +13,11 @@ import { activeEntitlements, type ActiveEntitlement } from "./service";
  * Programmes the student can use today, read with the user's session so RLS
  * applies (students see their own enrolments; guardians their children's).
  */
-export async function getActiveEntitlements(
+export const getActiveEntitlements = cache(async (
   centreId: string,
   studentId: string,
-  now: Date = new Date(),
-): Promise<ActiveEntitlement[]> {
-  const today = singaporeDate(now);
+): Promise<ActiveEntitlement[]> => {
+  const today = singaporeDate();
   const supabase = await createClient();
 
   const { data: enrolmentData, error: enrolmentError } = await supabase
@@ -53,4 +53,4 @@ export async function getActiveEntitlements(
     z.array(programmeCourseRow).parse(coursesResult.data),
     today,
   );
-}
+});
