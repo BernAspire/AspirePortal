@@ -1,6 +1,8 @@
 # Supabase sign-in setup (one time, owner)
 
-The portal signs people in with a one-time code sent by email. Two settings must change before this works, and one more before real users. All are in the Supabase dashboard for the project.
+The portal signs people in with a one-time code sent by email. All steps are in the Supabase dashboard for the project.
+
+**Do step 4 (your own email sender) first.** Supabase only lets you edit email templates once a custom SMTP sender is set up, and step 1 needs that.
 
 ## 1. Send a code, not a link
 
@@ -26,9 +28,9 @@ The template must contain `{{ .Token }}`. Without it, Supabase sends a link, whi
 
 **Authentication → Sign In / Providers → Email → Email OTP Expiration:** leave it at `3600` seconds (1 hour). This one setting also controls confirmation and invitation links, so a short value would break invitations later. Supabase lets an address request a new code only once every 60 seconds.
 
-## 4. Use your own email sender before real users
+## 4. Use your own email sender
 
-Supabase's built-in email service is for testing only: it sends very few emails per hour and only to addresses on the Supabase team. Before the pilot, set up a sender under **Project Settings → Authentication → SMTP Settings** (for example Resend, Postmark or Amazon SES, with a sending domain you own). Then raise **Authentication → Rate Limits → emails sent per hour** to suit the centre.
+Supabase's built-in email service sends very few emails per hour, only to addresses on the Supabase team, and does not allow template changes. Set up a sender under **Project Settings → Authentication → SMTP Settings** (for example Resend, Postmark or Amazon SES, with a sending domain you own). For a quick private test only, a Gmail account with an app password also works (`smtp.gmail.com`, port 465); switch to a domain sender before real users. Then raise **Authentication → Rate Limits → emails sent per hour** to suit the centre.
 
 ## Checking it works
 
