@@ -1,4 +1,7 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import Link from "next/link";
+
+import { Button } from "@/components/ui/button";
+import { SIGN_IN_PATH } from "@/lib/auth/routing";
 
 export default function HomePage() {
   return (
@@ -9,17 +12,14 @@ export default function HomePage() {
           Lessons, practice and progress for students, families and staff.
         </p>
       </div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Coming soon</CardTitle>
-          <CardDescription>
-            Sign-in for students and families is being built. Check back shortly.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          Questions? Contact your centre.
-        </CardContent>
-      </Card>
+      <div>
+        <Button asChild size="lg">
+          <Link href={SIGN_IN_PATH}>Sign in</Link>
+        </Button>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Accounts are set up by your centre. If you can&apos;t sign in, please contact them.
+      </p>
     </main>
   );
 }

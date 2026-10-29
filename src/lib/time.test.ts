@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatDateOnly,
   formatSingapore,
   isWithinValidity,
   singaporeDate,
@@ -28,6 +29,17 @@ describe("startOfSingaporeDay", () => {
 describe("formatSingapore", () => {
   it("formats in Singapore time", () => {
     expect(formatSingapore("2026-10-29T07:52:00Z")).toBe("Thu 29 Oct 2026, 3:52 pm");
+  });
+});
+
+describe("formatDateOnly", () => {
+  it("formats without time-zone shifts", () => {
+    expect(formatDateOnly("2026-12-31")).toBe("31 Dec 2026");
+    expect(formatDateOnly("2027-01-01")).toBe("1 Jan 2027");
+  });
+
+  it.each(["2026-13-01", "31/12/2026", "2026-1-1", ""])("rejects %j", (v) => {
+    expect(() => formatDateOnly(v)).toThrow(RangeError);
   });
 });
 
