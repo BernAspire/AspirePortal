@@ -13,6 +13,10 @@ import { createClient } from "@/lib/supabase/server";
 import {
   codeSchema,
   emailSchema,
+  pinSchema,
+  studentLoginEmail,
+  usernameSchema,
+  type PinSignInState,
   type SignInState,
 } from "./sign-in/schema";
 
@@ -101,6 +105,53 @@ export async function verifyCode(_prev: SignInState, formData: FormData): Promis
     };
   }
 
+  redirect(next);
+}
+
+const LOCKED =
+  "Too many wrong PINs. Please wait 15 minutes, or ask your centre to reset your PIN.";
+const WRONG_PIN = "That username or PIN isn't right. Check them and try again.";
+
+/**
+ * Student sign-in with a username and PIN (ADR 0004).
+ *
+ * The username is checked against the lockout first; a wrong PIN is counted
+ * (5 within 15 minutes locks the username for 15 minutes) and a successful
+ * sign-in clears the count. The answer never says whether a username exists.
+ */
+export async function pinSignIn(_prev: PinSignInState, formData: FormData): Promise<PinSignInState> {
+  const next = safeNextPath(formData.get("next"));
+  const parsedUsername = usernameSchema.safeParse(formData.get("username"));
+  const parsedPin = pinSchema.safeParse(formData.get("pin"));
+  const rawUsername = typeof formData.get("username") === "string" ? String(formData.get("username")).trim() : "";
+  if (!parsedUsername.success) {
+    return { next, username: rawUsername, error: "Enter your username (letters, numbers, dots or dashes)." };
+  }
+  const username = parsedUsername.data;
+  if (!parsedPin.success) {
+    return { next, username, error: "Enter your PIN (6 to 8 digits)." };
+  }
+
+  const supabase = await createClient();
+
+  const locked = await supabase.rpc("pin_login_locked", { p_username: username });
+  if (locked.error) return { next, username, error: UNAVAILABLE };
+  if (locked.data === true) return { next, username, error: LOCKED };
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email: studentLoginEmail(username),
+    password: parsedPin.data,
+  });
+
+  if (error) {
+    if (isServiceFailure(error)) return { next, username, error: UNAVAILABLE };
+    if (isRateLimited(error)) return { next, username, error: TOO_MANY };
+    await supabase.rpc("record_pin_failure", { p_username: username });
+    const nowLocked = await supabase.rpc("pin_login_locked", { p_username: username });
+    return { next, username, error: nowLocked.data === true ? LOCKED : WRONG_PIN };
+  }
+
+  await supabase.rpc("clear_pin_failures");
   redirect(next);
 }
 

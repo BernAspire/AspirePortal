@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { safeNextPath } from "@/lib/auth/routing";
 
-import { SignInForm } from "./sign-in-form";
+import { SignInTabs } from "./sign-in-tabs";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -15,9 +15,7 @@ export default function SignInPage({ searchParams }: PageProps<"/sign-in">) {
         <CardTitle>
           <h1 className="text-xl">Sign in</h1>
         </CardTitle>
-        <CardDescription>
-          Enter the email your centre has on record. We&apos;ll send you a code.
-        </CardDescription>
+        <CardDescription>Welcome back. Choose who is signing in.</CardDescription>
       </CardHeader>
       <CardContent>
         <Suspense fallback={<FormSkeleton />}>
@@ -33,8 +31,13 @@ async function SignInFormWithNext({
 }: {
   searchParams: PageProps<"/sign-in">["searchParams"];
 }) {
-  const { next } = await searchParams;
-  return <SignInForm next={safeNextPath(Array.isArray(next) ? next[0] : next)} />;
+  const { next, as } = await searchParams;
+  return (
+    <SignInTabs
+      next={safeNextPath(Array.isArray(next) ? next[0] : next)}
+      initial={as === "family" ? "family" : "student"}
+    />
+  );
 }
 
 function FormSkeleton() {

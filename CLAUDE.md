@@ -17,8 +17,8 @@ Full plan (PRD, architecture, schema, security, gap analysis, roadmap): see the 
 
 > Status: BUILDING. Approved 29 Oct 2026: the student portal (plus the foundation it needs) is built in this repo with Claude; other portals are decided later.
 > Current phase: **S1 — Learn (student-portal track)**
-> Done: Phase 0 foundation (tenancy, RLS, sign-in, student shell in the Aspire Online design); S1 schema (lessons, online-form consent, PIN lockout, lesson files); lesson importer (PowerPoint/Word → page images, GitHub job); Learn page, lesson viewer with hidden worked solutions, progress, Continue learning.
-> Next: import real lessons via `docs/runbooks/import-lessons.md`; student username + PIN sign-in screen; domain email sender before real users; question bank (waiting on the bank's source file).
+> Done: Phase 0 foundation (tenancy, RLS, sign-in, student shell in the Aspire Online design); S1 schema (lessons, online-form consent, PIN lockout, lesson files); lesson importer (PowerPoint/Word → page images, GitHub job); Learn page, lesson viewer with hidden worked solutions, progress, Continue learning; student username + PIN sign-in (logins set up via `docs/runbooks/student-logins.md`).
+> Next: import real lessons via `docs/runbooks/import-lessons.md`; domain email sender before real users; question bank (waiting on the bank's source file).
 
 ---
 

@@ -22,6 +22,7 @@ test("sign-in ignores an off-site return address", async ({ page }) => {
 
 test("sign-in rejects an invalid email without calling Supabase", async ({ page }) => {
   await page.goto("/sign-in");
+  await page.getByRole("tab", { name: "Parent or staff" }).click();
   await page.getByLabel("Email").fill("not-an-email");
   await page.getByRole("button", { name: "Send me a code" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "valid email" })).toBeVisible();
@@ -29,12 +30,49 @@ test("sign-in rejects an invalid email without calling Supabase", async ({ page 
 });
 
 test("sign-in reports an outage instead of pretending a code was sent", async ({ page }) => {
-  await page.goto("/sign-in");
+  await page.goto("/sign-in?as=family");
   await page.getByLabel("Email").fill("student@example.test");
   await page.getByRole("button", { name: "Send me a code" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "couldn't reach" })).toBeVisible();
   await expect(page.getByLabel("Code")).toHaveCount(0);
   await expect(page.getByLabel("Email")).toHaveValue("student@example.test");
+});
+
+test("students see username and PIN first", async ({ page }) => {
+  await page.goto("/sign-in");
+  await expect(page.getByRole("tab", { name: "Student" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByLabel("Username")).toBeVisible();
+  await expect(page.getByLabel("PIN")).toHaveAttribute("type", "password");
+});
+
+test("PIN sign-in checks the form before calling Supabase", async ({ page }) => {
+  await page.goto("/sign-in");
+  await page.getByLabel("Username").fill("tess tan");
+  await page.getByLabel("PIN").fill("123456");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Enter your username" })).toBeVisible();
+
+  await page.getByLabel("Username").fill("tess.tan");
+  await page.getByLabel("PIN").fill("12");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "6 to 8 digits" })).toBeVisible();
+});
+
+test("PIN sign-in reports an outage", async ({ page }) => {
+  await page.goto("/sign-in");
+  await page.getByLabel("Username").fill("tess.tan");
+  await page.getByLabel("PIN").fill("123456");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "couldn't reach" })).toBeVisible();
+  await expect(page.getByLabel("Username")).toHaveValue("tess.tan");
+});
+
+test("tabs switch with the keyboard", async ({ page }) => {
+  await page.goto("/sign-in");
+  await page.getByRole("tab", { name: "Student" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Parent or staff" })).toBeFocused();
+  await expect(page.getByLabel("Email")).toBeVisible();
 });
 
 test("sign-in fits a phone screen", async ({ page }) => {

@@ -27,3 +27,29 @@ export type SignInState =
       /** Changes on every send, so the code form resets for a new code. */
       readonly sentAt?: number;
     };
+
+/** Student usernames: 3–32 characters, lower-case letters, digits, dot, dash, underscore. */
+export const usernameSchema = z
+  .string()
+  .trim()
+  .transform((value) => value.toLowerCase())
+  .pipe(z.string().regex(/^[a-z0-9][a-z0-9._-]{2,31}$/));
+
+/** PINs are 6–8 digits (Supabase requires passwords of at least 6 characters). */
+export const pinSchema = z
+  .string()
+  .transform((value) => value.replace(/\s+/g, ""))
+  .pipe(z.string().regex(/^\d{6,8}$/));
+
+/** The never-delivered address behind a student login (matches app.student_login_domain()). */
+export const STUDENT_LOGIN_DOMAIN = "students.aspireportal.invalid";
+
+export function studentLoginEmail(username: string): string {
+  return `${username}@${STUDENT_LOGIN_DOMAIN}`;
+}
+
+export type PinSignInState = {
+  readonly next: string;
+  readonly username?: string;
+  readonly error?: string;
+};
