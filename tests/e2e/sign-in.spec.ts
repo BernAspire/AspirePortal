@@ -38,6 +38,13 @@ test("sign-in reports an outage instead of pretending a code was sent", async ({
   await expect(page.getByLabel("Email")).toHaveValue("student@example.test");
 });
 
+for (const path of ["/student/classes", "/student/tutorials", "/student/calendar", "/student/attendance"]) {
+  test(`signed-out visitors to ${path} are sent to sign-in`, async ({ page }) => {
+    await page.goto(path);
+    await expect(page).toHaveURL(new RegExp(`/sign-in\\?next=${encodeURIComponent(path)}$`));
+  });
+}
+
 test("students see username and PIN first", async ({ page }) => {
   await page.goto("/sign-in");
   await expect(page.getByRole("tab", { name: "Student" })).toHaveAttribute("aria-selected", "true");
