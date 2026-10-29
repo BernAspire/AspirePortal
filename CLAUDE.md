@@ -16,9 +16,9 @@ Full plan (PRD, architecture, schema, security, gap analysis, roadmap): see the 
 - **Booking** = a student's seat in a session.
 
 > Status: BUILDING. Approved 29 Oct 2026: the student portal (plus the foundation it needs) is built in this repo with Claude; other portals are decided later.
-> Current phase: **S2 — Classes (student-portal track)**
-> Done: Phase 0 foundation (tenancy, RLS, sign-in, student shell in the Aspire Online design); S1 schema (lessons, online-form consent, PIN lockout, lesson files); lesson importer (PowerPoint/Word → page images, GitHub job); Learn page, lesson viewer with hidden worked solutions, progress, Continue learning; student username + PIN sign-in (logins set up via `docs/runbooks/student-logins.md`); Classes: scheduling schema (classes, sessions, rosters, bookings, attendance, clash constraints, gated live-tutorial links), timetable spreadsheet import (`docs/runbooks/import-timetable.md`), My Classes, Tutorials, Calendar and Attendance pages.
-> Next: load the real timetable; import real lessons via `docs/runbooks/import-lessons.md`; domain email sender before real users; question bank importer (owner decisions recorded in `docs/question-bank-discovery.md`).
+> Current phase: **S3 — Practice (student-portal track)**
+> Done: Phase 0 foundation (tenancy, RLS, sign-in, student shell in the Aspire Online design); S1 schema (lessons, online-form consent, PIN lockout, lesson files); lesson importer (PowerPoint/Word → page images, GitHub job); Learn page, lesson viewer with hidden worked solutions, progress, Continue learning; student username + PIN sign-in (logins set up via `docs/runbooks/student-logins.md`); Classes: scheduling schema (classes, sessions, rosters, bookings, attendance, clash constraints, gated live-tutorial links), timetable spreadsheet import (`docs/runbooks/import-timetable.md`), My Classes, Tutorials, Calendar and Attendance pages; question bank (versions, separate answer keys, marking in the database), importer (`docs/runbooks/import-question-bank.md`), Practice setup and runner.
+> Next: load the real timetable; import real lessons via `docs/runbooks/import-lessons.md`; domain email sender before real users; import the real question banks; Mock Exams and Smart Revision on the question bank; gamification (XP, streaks).
 
 ---
 
@@ -142,6 +142,8 @@ python3 scripts/lesson_import/import_lessons.py build --out ./out FILES   # conv
 python3 -m unittest -q   # in scripts/timetable_import (needs openpyxl): spreadsheet rules
 python3 scripts/timetable_import/import_timetable.py check FILE.xlsx   # check a timetable spreadsheet locally
 python3 scripts/timetable_import/make_template.py   # regenerate docs/templates/timetable-template.xlsx
+python3 -m unittest -q   # in scripts/question_import: question bank parsing rules
+python3 scripts/question_import/import_bank.py check FILE.html   # check a question bank file locally
 ```
 
 Local DB tests use `supabase/tests/local/00_supabase_shim.sql` to stand in for Supabase's `auth` schema and roles. It is never applied to Supabase. CI runs the same script (`.github/workflows/db-tests.yml`); `.github/workflows/db-deploy.yml` pushes migrations to Supabase once the repository secrets are set. `.github/workflows/app-ci.yml` runs typecheck, lint, unit tests, build and the Playwright smoke test on every pull request.

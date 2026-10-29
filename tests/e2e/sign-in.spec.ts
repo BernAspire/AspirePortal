@@ -38,7 +38,7 @@ test("sign-in reports an outage instead of pretending a code was sent", async ({
   await expect(page.getByLabel("Email")).toHaveValue("student@example.test");
 });
 
-for (const path of ["/student/classes", "/student/tutorials", "/student/calendar", "/student/attendance"]) {
+for (const path of ["/student/classes", "/student/tutorials", "/student/calendar", "/student/attendance", "/student/practice"]) {
   test(`signed-out visitors to ${path} are sent to sign-in`, async ({ page }) => {
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(`/sign-in\\?next=${encodeURIComponent(path)}$`));
