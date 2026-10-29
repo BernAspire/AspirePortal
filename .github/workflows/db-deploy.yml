@@ -39,5 +39,15 @@ jobs:
       - name: Push migrations
         if: steps.cfg.outputs.ready == 'true'
         run: |
-          supabase link --project-ref "$SUPABASE_PROJECT_ID"
-          supabase db push
+          set -o pipefail
+          report() {
+            # Surface the last lines as an annotation so the failure is readable without the raw log.
+            tail -n 15 "$1" | sed -e 's/%/%25/g' | tr '\n' '|' | sed 's/|/%0A/g' | xargs -0 -I{} echo "::error title=$2::{}"
+          }
+          if ! supabase link --project-ref "$SUPABASE_PROJECT_ID" > link.log 2>&1; then
+            cat link.log; report link.log "supabase link failed"; exit 1
+          fi
+          if ! supabase db push --include-all > push.log 2>&1 < /dev/null; then
+            cat push.log; report push.log "supabase db push failed"; exit 1
+          fi
+          cat push.log
