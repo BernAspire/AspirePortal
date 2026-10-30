@@ -32,4 +32,30 @@ rollback;
 select test.expect((select count(*) from public.practice_question_counts('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001')), 0,
   'access: counts need a signed-in learner or staff');
 
+-- Each way of losing access still removes it (as with the per-row rule).
+create function test.chloe_sees() returns bigint language plpgsql as $$
+declare n bigint;
+begin
+  perform test.login('aaaaaaaa-0000-0000-0000-000000000003');
+  set local role authenticated;
+  select count(*) into n from public.questions;
+  reset role;
+  return n;
+end $$;
+begin;
+update public.centre_memberships set status = 'suspended' where user_id = 'aaaaaaaa-0000-0000-0000-000000000003';
+select test.expect(test.chloe_sees(), 0, 'access: a suspended membership sees no questions');
+rollback;
+begin;
+update public.students set deleted_at = now() where id = 'a4000000-0000-0000-0000-000000000000';
+select test.expect(test.chloe_sees(), 0, 'access: a deleted student sees no questions');
+rollback;
+begin;
+update public.programmes set status = 'archived' where id in (select programme_id from public.programme_enrolments where student_id = 'a4000000-0000-0000-0000-000000000000');
+select test.expect(test.chloe_sees(), 0, 'access: an archived programme gives no questions');
+rollback;
+begin;
+select test.expect((test.chloe_sees() > 0)::int, 1, 'access: (and normally she does see them)');
+rollback;
+
 select 'ALL QUESTION ACCESS TESTS PASSED' as result;
