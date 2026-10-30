@@ -26,6 +26,7 @@ ONE_OFFS = "One-off sessions"
 CANCELLATIONS = "Cancellations"
 ATTENDANCE = "Attendance"
 EXAMS = "Exams"
+OFFERS = "Offers"
 
 COLUMNS: dict[str, list[str]] = {
     CLASSES: ["Class code", "Level", "Subject", "Type", "Branch", "Room", "Teacher", "Day", "Start time",
@@ -36,6 +37,7 @@ COLUMNS: dict[str, list[str]] = {
     CANCELLATIONS: ["Class code", "Date", "Reason"],
     ATTENDANCE: ["Class or one-off code", "Date", "Client code", "Status", "Note"],
     EXAMS: ["Level", "Subject", "Exam", "Date"],
+    OFFERS: ["Level", "Subject", "Offer", "Description", "Topic", "Sub-topics", "From date", "Until date"],
 }
 
 TYPES = {
@@ -203,11 +205,12 @@ class Timetable:
     cancellations: list[dict] = field(default_factory=list)
     attendance: list[dict] = field(default_factory=list)
     exams: list[dict] = field(default_factory=list)
+    offers: list[dict] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
     def courses(self) -> set[CourseRef]:
-        return {r["course"] for r in self.classes + self.one_offs + self.exams}
+        return {r["course"] for r in self.classes + self.one_offs + self.exams + self.offers}
 
     def payload(self, course_ids: dict[CourseRef, str]) -> dict:
         """The JSON for public.apply_timetable, with courses replaced by their ids."""
@@ -231,9 +234,15 @@ class Timetable:
         """The JSON for public.apply_exam_dates."""
         return [{"course_id": course_ids[e["course"]], "name": e["name"], "exam_on": e["exam_on"].isoformat()} for e in self.exams]
 
+    def offer_payload(self, course_ids: dict[CourseRef, str]) -> list[dict]:
+        """The JSON for public.apply_revision_offers."""
+        return [{"course_id": course_ids[o["course"]], "title": o["title"], "description": o["description"], "topic": o["topic"],
+                 "sections": o["sections"], "starts_on": o["starts_on"].isoformat() if o["starts_on"] else None,
+                 "ends_on": o["ends_on"].isoformat() if o["ends_on"] else None} for o in self.offers]
+
     def summary(self) -> str:
         return (f"{len(self.classes)} classes, {len(self.roster)} student places, {len(self.one_offs)} one-off sessions, "
-                f"{len(self.cancellations)} cancellations, {len(self.attendance)} attendance marks, {len(self.exams)} exam dates")
+                f"{len(self.cancellations)} cancellations, {len(self.attendance)} attendance marks, {len(self.exams)} exam dates, {len(self.offers)} offers")
 
 
 # --- Rows -------------------------------------------------------------------------
@@ -442,7 +451,61 @@ def read_rows(sheets: dict[str, list[tuple]]) -> Timetable:
             seen_exams.add(key)
             tt.exams.append({"course": CourseRef(level, subject), "name": name, "exam_on": day})
 
+    # Offers ("Recommended for you" in Smart Revision, matched to weak sub-topics; ADR 0010)
+    try:
+        rows = _rows(sheets[OFFERS], OFFERS)
+    except CellError as err:
+        e.append(str(err))
+        rows = []
+    seen_offers: set[tuple] = set()
+    for n, r in rows:
+        w = f"{OFFERS} row {n}"
+        before = len(e)
+        level = _cell(e, w, "Level", lambda: parse_level(r["Level"]))
+        subject = _cell(e, w, "Subject", lambda: parse_subject(r["Subject"]))
+        title = text(r["Offer"])
+        if not title or len(title) > 80:
+            e.append(f"{w}: Offer must be a name of up to 80 characters, e.g. P6 Science Holiday Intensive")
+        description = text(r["Description"])
+        if description and len(description) > 300:
+            e.append(f"{w}: Description is longer than 300 characters")
+        topic = text(r["Topic"])
+        if not topic:
+            e.append(f"{w}: Topic must be a question bank topic, e.g. Whole Numbers")
+        sections = _cell(e, w, "Sub-topics", lambda: parse_section_numbers(r["Sub-topics"]))
+        starts = _cell(e, w, "From date", lambda: _optional(r["From date"], parse_date))
+        ends = _cell(e, w, "Until date", lambda: _optional(r["Until date"], parse_date))
+        if starts and ends and ends < starts:
+            e.append(f"{w}: Until date is before From date")
+        key = (level, subject, (title or "").lower())
+        if len(e) == before and key in seen_offers:
+            e.append(f"{w}: {title} is listed twice for {level} {subject}")
+        if len(e) == before:
+            seen_offers.add(key)
+            tt.offers.append({"course": CourseRef(level, subject), "title": title, "description": description, "topic": topic,
+                              "sections": sections, "starts_on": starts, "ends_on": ends})
+
     return tt
+
+
+def parse_section_numbers(value: Any) -> list[int]:
+    """'1, 3' → [1, 3]; blank → [] (the whole topic)."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value != int(value) or not 1 <= value <= 999:
+            raise CellError(f"must be sub-topic numbers like 1, 3 (got '{value}')")
+        return [int(value)]
+    raw = text(value)
+    if raw is None:
+        return []
+    out: list[int] = []
+    for part in re.split(r"[,;\s]+", raw):
+        if not part:
+            continue
+        if not part.isdigit() or not 1 <= int(part) <= 999:
+            raise CellError(f"must be sub-topic numbers like 1, 3 (got '{raw}')")
+        if int(part) not in out:
+            out.append(int(part))
+    return out
 
 
 def _raise(message: str) -> Any:

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { formatDateOnly } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { startPractice } from "@/modules/practice";
-import { accuracyOf, daysUntil, nextExam, todaysTasks, upcomingReviews, weakTopics, weekStats } from "@/modules/revision";
+import { accuracyOf, daysUntil, matchOffers, nextExam, todaysTasks, upcomingReviews, weakTopics, weekStats, type RevisionOffer } from "@/modules/revision";
 
 import { EmptyState } from "../_components/class-ui";
 import { REVISION_PATH } from "../_components/nav-config";
@@ -18,7 +18,7 @@ const REASON = {
   weak: { label: "Weak topic", cls: "bg-[#FDECEC] text-[#9B1C1C]" },
 } as const;
 
-export function RevisionHomeView({ ctx }: { ctx: RevisionContext }) {
+export function RevisionHomeView({ ctx, offers = [] }: { ctx: RevisionContext; offers?: readonly RevisionOffer[] }) {
   const r = ctx.revision;
   if (!r) return <EmptyState title="No revision yet">Your student record isn&apos;t set up. Please contact {ctx.centreName}.</EmptyState>;
 
@@ -27,6 +27,7 @@ export function RevisionHomeView({ ctx }: { ctx: RevisionContext }) {
   const weak = weakTopics(r.sections, "accuracy");
   const week = weekStats(r);
   const exam = nextExam(r.exams);
+  const recommended = matchOffers(offers, r.sections);
   const subjects = [...new Set([...ctx.courseNames.values()].map(subjectOf))];
   const course = (id: string) => ctx.courseNames.get(id) ?? "";
 
@@ -183,6 +184,24 @@ export function RevisionHomeView({ ctx }: { ctx: RevisionContext }) {
                 {exam?.active ? "On · open plan" : exam ? "Activate now" : "Add your exam"}
               </Link>
             </section>
+
+            {recommended.length > 0 && (
+              <section aria-labelledby="recommended" className={cn(panel, "flex flex-col gap-3 px-[18px] py-4")}>
+                <h2 id="recommended" className="font-display text-[17px] font-semibold">
+                  Recommended for you
+                </h2>
+                {recommended.map(({ offer, sections }) => (
+                  <div key={offer.id} className="flex flex-col gap-1 rounded-xl border border-[#F6E8C2] bg-[#FFF9EC] px-3.5 py-3">
+                    <div className="font-semibold">{offer.title}</div>
+                    <div className="text-xs text-[#8A5A00]">
+                      {subjectOf(course(offer.courseId))} · covers {sections.map((s) => s.title).join(", ")}
+                    </div>
+                    {offer.description && <p className="text-[13px] leading-snug text-[#3D4146]">{offer.description}</p>}
+                  </div>
+                ))}
+                <p className="text-xs text-[#5F6368]">Interested? Ask your parent or {ctx.centreName} about it.</p>
+              </section>
+            )}
           </div>
         </div>
       )}

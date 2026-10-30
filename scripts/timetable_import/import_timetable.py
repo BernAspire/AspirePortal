@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Imports timetable spreadsheets (classes, students, one-off sessions, cancellations,
-attendance) into the portal.
+attendance, exam dates, Smart Revision offers) into the portal.
 
 Usage:
   # Check a file locally (no network): lists every problem, or what would be uploaded.
@@ -68,6 +68,10 @@ def apply(sb: Supabase, centre_id: str, tt: Timetable) -> dict:
     if tt.exams:
         body = json.dumps({"p_centre": centre_id, "p_exams": tt.exam_payload(course_ids)}).encode()
         out["exams"] = json.loads(sb._request("POST", "/rest/v1/rpc/apply_exam_dates", body, {"Content-Type": "application/json"}))
+    out["offers"] = 0
+    if tt.offers:
+        body = json.dumps({"p_centre": centre_id, "p_offers": tt.offer_payload(course_ids)}).encode()
+        out["offers"] = json.loads(sb._request("POST", "/rest/v1/rpc/apply_revision_offers", body, {"Content-Type": "application/json"}))
     return out
 
 
@@ -115,7 +119,7 @@ def cmd_inbox(args: argparse.Namespace) -> int:
             print(f"✓ {name}: {result['classes']} classes ({result['sessions_upserted']} upcoming sessions, "
                   f"{result['sessions_removed']} removed), {result['roster_rows']} student places, "
                   f"{result['one_offs']} one-off sessions, {result['bookings_added']} new bookings, "
-                  f"{result['cancellations']} cancellations, {result['attendance']} attendance marks, {result['exams']} exam dates")
+                  f"{result['cancellations']} cancellations, {result['attendance']} attendance marks, {result['exams']} exam dates, {result['offers']} offers")
             sb.move(INBOX, name, f"done/{stamp}/{name}")
     return 1 if failures else 0
 
