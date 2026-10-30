@@ -8,6 +8,10 @@ portal escapes it when rendering.
 
 File names say where a bank goes, like lesson files:
   P5 - Mathematics - Whole Numbers.html   → Primary 5 Mathematics, topic "Whole Numbers"
+  P5 - Mathematics - Topic 3 - Decimals.html → topic "Topic 3 - Decimals", listed third
+
+Two formats exist: format 1 (the first Whole Numbers bank, converted here) and format 2
+(the 2026 banks with fractions and figures, converted in bank_v2.py).
 """
 
 from __future__ import annotations
@@ -22,6 +26,8 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lesson_import"))
 from naming import LEVEL_NAMES, subject_code  # noqa: E402
+
+from bank_v2 import BankV2, convert_v2, is_v2  # noqa: E402
 
 _NAME = re.compile(
     r"^(?P<level>P[1-6]|S[1-5]|JC[12])\s*-\s*(?P<subject>[A-Za-z][A-Za-z &]{1,40}?)\s*-\s*(?P<topic>.+?)\.html?$",
@@ -38,6 +44,8 @@ class BankFile:
     level_code: str
     subject_name: str
     topic: str
+    #: "Topic 3 - Decimals" → 3: the order topics are listed in (none for other names)
+    position: int | None = None
 
     @property
     def level_name(self) -> str:
@@ -58,7 +66,8 @@ def parse_name(file_name: str) -> BankFile | None:
         return None
     subject = " ".join(w.capitalize() if w.islower() else w for w in m["subject"].split())
     topic = " ".join(m["topic"].replace("_", " ").split())
-    return BankFile(m["level"].upper(), subject, topic)
+    numbered = re.match(r"^Topic\s+(\d{1,3})\s*-\s*\S", topic, re.IGNORECASE)
+    return BankFile(m["level"].upper(), subject, topic, int(numbered[1]) if numbered else None)
 
 
 def extract_bank(html: str) -> dict:
@@ -224,7 +233,7 @@ def convert(data: dict) -> Bank:
     return bank
 
 
-def read_file(path: Path) -> tuple[BankFile | None, Bank, str]:
+def read_file(path: Path) -> tuple[BankFile | None, Bank | BankV2, str]:
     """(where it goes, the converted bank, sha-256 of the file). Problems are in bank.errors."""
     raw = path.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
@@ -239,4 +248,4 @@ def read_file(path: Path) -> tuple[BankFile | None, Bank, str]:
         bank = Bank()
         bank.errors.append(str(err))
         return info, bank, sha
-    return info, convert(data), sha
+    return info, (convert_v2(data) if is_v2(data) else convert(data)), sha

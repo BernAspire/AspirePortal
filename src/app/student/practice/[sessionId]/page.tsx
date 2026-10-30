@@ -4,7 +4,7 @@ import { Suspense } from "react";
 
 import { requirePortal } from "@/lib/auth/session";
 import { getCourses } from "@/modules/academics";
-import { getPracticeSession, submitPracticeAnswer } from "@/modules/practice";
+import { getPracticeSession, getPracticeSolution, submitPracticeAnswer } from "@/modules/practice";
 import { getQuestionVersions } from "@/modules/question-bank";
 import { getMyStudent } from "@/modules/crm";
 import { getBookmarks, setBookmark } from "@/modules/revision";
@@ -67,6 +67,7 @@ async function Session({ params }: { params: PageProps<"/student/practice/[sessi
       submit={submitPracticeAnswer}
       bookmarked={bookmarks.filter((b) => !b.resolved).map((b) => b.questionId)}
       setBookmark={setBookmark}
+      solution={getPracticeSolution}
     />
   );
 }

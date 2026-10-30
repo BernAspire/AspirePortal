@@ -31,6 +31,19 @@ const GOLDEN: Record<string, { blocks: Block[]; steps?: Block[] }> = {
     ],
   },
   "html-is-text": { blocks: [{ type: "paragraph", text: "Is 3 < 5 and 7 > 2? <b>bold</b> <script>x</script>" }] },
+  // Format 2 (2026 banks): fractions, figures, tables with fractions, aligned worked steps.
+  "format2-fractions-figure": {
+    blocks: [
+      { type: "paragraph", rich: ["Express 3", { frac: [["2"], ["7"]] }, " as an improper fraction. <i>not markup</i>"] },
+      { type: "image", path: "centres/x/question-bank/images/y/abc.png", width: 320, src: "https://example.test/signed/abc.png" },
+      { type: "image", path: "centres/x/question-bank/images/y/def.png", width: 200 },
+      { type: "table", rows: [["Side", "Length"], [["a"], [{ frac: [["1"], ["2"]] }, " m"]]] },
+    ],
+    steps: [
+      { type: "paragraph", rich: ["(a)"], part: true },
+      { type: "equation", rows: [{ label: ["Fraction shaded"], value: ["= ", { frac: [["28", { frac: [["1"], ["2"]] }], ["50"]] }] }, { label: [], value: ["= 57/100"] }] },
+    ],
+  },
 };
 
 describe("question renderer golden set", () => {

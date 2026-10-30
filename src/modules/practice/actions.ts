@@ -6,7 +6,18 @@ import { STUDENT_HOME_PATH } from "@/lib/auth/routing";
 import { requirePortal } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
-import { practiceResult, startPracticeInput, submitAnswerInput, type StartPracticeState, type SubmitAnswerResult } from "./schema";
+import { withFigureUrls } from "@/modules/question-bank";
+
+import {
+  practiceResult,
+  practiceSolution,
+  solutionInput,
+  startPracticeInput,
+  submitAnswerInput,
+  type SolutionResult,
+  type StartPracticeState,
+  type SubmitAnswerResult,
+} from "./schema";
 import { DIFFICULTY_LEVELS } from "./service";
 
 const PRACTICE_PATH = `${STUDENT_HOME_PATH}/practice`;
@@ -74,5 +85,21 @@ export async function submitPracticeAnswer(input: unknown): Promise<SubmitAnswer
     return { ok: false, reason: "unavailable" };
   }
   const result = practiceResult.safeParse(data);
-  return result.success ? { ok: true, result: result.data } : { ok: false, reason: "unavailable" };
+  return result.success ? { ok: true, result: await withFigureUrls(result.data) } : { ok: false, reason: "unavailable" };
+}
+
+/**
+ * The worked solution of a self-checked question (draw-on-paper or explain-in-words), so the
+ * student can compare their own work before saying whether they got it right. The database
+ * refuses this for questions that are marked automatically.
+ */
+export async function getPracticeSolution(input: unknown): Promise<SolutionResult> {
+  await requirePortal("student", PRACTICE_PATH);
+  const parsed = solutionInput.safeParse(input);
+  if (!parsed.success) return { ok: false };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("practice_solution", { p_session: parsed.data.sessionId, p_position: parsed.data.position });
+  if (error) return { ok: false };
+  const solution = practiceSolution.safeParse(data);
+  return solution.success ? { ok: true, solution: await withFigureUrls(solution.data) } : { ok: false };
 }

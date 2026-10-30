@@ -20,6 +20,47 @@ import {
  * an active programme covers today (rule 12). Answer keys are never read here.
  */
 
+export const QUESTION_IMAGES_BUCKET = "question-images";
+const FIGURE_URL_TTL_S = 60 * 60;
+
+function isFigure(v: unknown): v is { type: "image"; path: string } {
+  return typeof v === "object" && v !== null && (v as { type?: unknown }).type === "image" && typeof (v as { path?: unknown }).path === "string";
+}
+
+function collectFigures(v: unknown, into: Set<string>): void {
+  if (Array.isArray(v)) v.forEach((x) => collectFigures(x, into));
+  else if (isFigure(v)) into.add(v.path);
+  else if (typeof v === "object" && v !== null) Object.values(v).forEach((x) => collectFigures(x, into));
+}
+
+function addSources<T>(v: T, urls: ReadonlyMap<string, string>): T {
+  if (Array.isArray(v)) return v.map((x: unknown) => addSources(x, urls)) as T;
+  if (isFigure(v)) {
+    const src = urls.get(v.path);
+    return (src ? { ...v, src } : v) as T;
+  }
+  if (typeof v === "object" && v !== null) {
+    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, addSources(x, urls)])) as T;
+  }
+  return v;
+}
+
+/**
+ * Adds a short-lived signed URL (`src`) to every figure in question content or worked steps.
+ * Signed with the student's session, so storage RLS lets through only figures of courses
+ * their programme covers today; others stay without `src` and show as unavailable.
+ */
+export async function withFigureUrls<T>(value: T): Promise<T> {
+  const paths = new Set<string>();
+  collectFigures(value, paths);
+  if (paths.size === 0) return value;
+  const supabase = await createClient();
+  const { data } = await supabase.storage.from(QUESTION_IMAGES_BUCKET).createSignedUrls([...paths], FIGURE_URL_TTL_S);
+  const urls = new Map<string, string>();
+  for (const d of data ?? []) if (d.path && d.signedUrl && !d.error) urls.set(d.path, d.signedUrl);
+  return addSources(value, urls);
+}
+
 /** Course ids (from the given ones) that have at least one question topic the student can see. */
 export const getCoursesWithQuestions = cache(async (centreId: string, courseIds: readonly string[]): Promise<Set<string>> => {
   if (courseIds.length === 0) return new Set();
@@ -91,9 +132,10 @@ export async function getQuestionVersions(
   const sectionTitles = new Map(z.array(sectionRow).parse(sData).map((s) => [s.id, s.title]));
 
   const out = new Map<string, QuestionView>();
+  const signed = await withFigureUrls(versions);
   for (const item of items) {
     const q = questions.get(item.questionId);
-    const v = versions.find((x) => x.question_id === item.questionId && x.version === item.version);
+    const v = signed.find((x) => x.question_id === item.questionId && x.version === item.version);
     if (!q || !v) continue;
     out.set(`${item.questionId}:${item.version}`, {
       id: q.id,

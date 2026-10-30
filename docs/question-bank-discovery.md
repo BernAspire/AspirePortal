@@ -95,3 +95,68 @@ Each import creates a new `question_version` when any content field changes; old
 3. **Other topic files** are built the same way (one `BANK` JSON per page). This file is a sample: the bank will grow to many topics across Primary 1–6 and Secondary 1–4, so the schema and importer must handle a large bank (tens of thousands of questions) with indexed filtering.
 4. **No term tags.** Questions are organised by course (subject × level), topic and section only.
 5. **Access** follows subscriptions: a student only sees questions for courses their active programme covers (CLAUDE.md rule 12).
+
+---
+
+# Format 2 (the 2026 banks, examined 30 Oct 2026)
+
+## Source examined
+
+13 files sent by the owner on 30 Oct 2026, one per Primary 5 Mathematics topic, titled
+`P5 - Mathematics - Topic N - <name>` (Topic 1 Whole Numbers … Topic 13 Bridging). 1.6–5.8 MB each;
+5,921 questions and 3,705 figures in total. All 13 share the structure below; the importer reads
+both formats (`scripts/question_import/bank.py` for format 1, `bank_v2.py` for format 2).
+
+## Structure
+
+`const BANK = { sections, short, items, img, key, hint }`
+
+- `sections`: code → title, e.g. `"WN-A": "Numbers to 10 Million"` (3–9 per topic). Imported as
+  sub-topics numbered 1, 2, 3 … in file order (so "WN-B" is sub-topic 2, used by the Offers sheet).
+- `short`: shorter titles for the page's summary cards (not imported).
+- `img`: list of figures as `data:image/png;base64,…` (PNG; JPEG also accepted).
+- `key`: the page's local-storage key (not imported). `hint`: typing tip under answer boxes (kept).
+- `items`, one per question:
+
+| Field | Meaning | Imported as |
+|---|---|---|
+| `id` | question number `Q0001`, unique in the file | question number shown to students |
+| `s` | section code | sub-topic |
+| `d` | 1 Foundation, 2 Standard, 3 Challenging | difficulty |
+| `g` | group: the same question at different difficulties | group (adaptive practice) |
+| `p` | product A / BC / D (where it came from) | kept inside `source` only; not shown (owner) |
+| `src` | source line | `source_ref`; not shown (owner, 29 Oct) |
+| `q` | question lines: text, or `{table: rows}` | blocks |
+| `o`, `c` | 4 options and the right one (1-based), 776 questions | multiple choice |
+| `a` | answer text | key (marking) and the answer shown after |
+| `k` | worked-solution lines (172 questions have none) | worked steps |
+| `x` | "extra practice" | tag on the question |
+| `draw` | answer is drawn on paper (128) | self-checked |
+
+## Markup inside text
+
+- `⟦num‖den⟧` is a fraction; `3⟦2‖7⟧` a mixed number; fractions can nest (one case). Used in
+  question text, options, table cells, answers and steps (8,000+ times). Stored as structured
+  inline lists, e.g. `["3", {"frac": [["2"], ["7"]]}]`, and drawn as stacked fractions.
+- `[[img:N:W]]` is figure N, W pixels wide. Always alone on its line. Stored in private storage
+  (`question-images`, `centres/{centre}/question-bank/images/{course}/{sha256}.png`) and shown with
+  short-lived signed URLs.
+- A worked-step line starting with a tab, `"\tArea\t= 6 × 9"`, is an equation row; consecutive
+  rows line up their equals signs. `"(a)"` alone starts a part. Tabs elsewhere become spaces.
+- `"(a)\t…"` in question text starts a part.
+
+## Answer checking in the page (ported)
+
+The page's own script (`parts`, `same`, `isOpen`, `normNum`) decides marking; the portal marks the
+same way in the database:
+- answers split into boxes on `;` when labelled `(a)`…`(h)`, `(i)`…`(vi)`, or `Label: value`;
+  otherwise one box (so `"(4)"` is one box expecting 4). Up to 7 boxes seen (8 allowed);
+- fractions compare in text form (`3 2/7`); numbers must match in order; `cm²`, `m3` are units,
+  not numbers; spaces/commas in thousands are ignored unless a `/` follows;
+- answers without numbers compare letters; a symbol-only answer (`÷`) compares the symbol;
+- sentence answers (the page's `isOpen`: "because", "explain", long wordy answers …) and `draw`
+  questions are **self-checked**: the student sees the worked solution and says whether they got
+  it right (owner, 30 Oct 2026). The page instead accepted any attempt. 195 questions in the 13 files;
+  a question with any such part is self-checked as a whole.
+- The page's "Mark as correct / Mark as wrong" override buttons are not carried over: automatic
+  marking stays on the server.

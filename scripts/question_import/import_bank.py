@@ -28,9 +28,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lesson_import")
 from import_lessons import Supabase, ensure_course  # noqa: E402
 
 from bank import read_file  # noqa: E402
+from bank_v2 import IMG_PREFIX, BankV2  # noqa: E402
 
 INBOX = "question-inbox"
 SOURCES = "question-sources"
+IMAGES = "question-images"
+
+
+def upload_figures(sb: Supabase, bank: BankV2, prefix: str, tmp: Path) -> None:
+    """Puts each figure in private storage at {prefix}{sha}.{ext} (same picture, same path)."""
+    for name, raw in bank.images.items():
+        local = tmp / f"fig-{name}"
+        local.write_bytes(raw)
+        sb.upload(IMAGES, prefix + name, local, "image/png" if name.endswith(".png") else "image/jpeg")
+        local.unlink()
 
 
 def cmd_check(args: argparse.Namespace) -> int:
@@ -95,8 +106,17 @@ def cmd_inbox(args: argparse.Namespace) -> int:
                 course_id = ensure_course(sb, centre_id, info)  # type: ignore[arg-type]
                 source_path = f"centres/{centre_id}/question-bank/sources/{sha}.html"
                 sb.upload(SOURCES, source_path, local, "text/html")
-                body = json.dumps({"p_centre": centre_id, "p_course": course_id, "p_topic": info.topic,
-                                   "p_source_path": source_path, "p_sha256": sha, "p_data": bank.payload()}).encode()
+                data = bank.payload()
+                if info.position is not None:
+                    data["position"] = info.position
+                text = json.dumps(data)
+                if isinstance(bank, BankV2):
+                    prefix = f"centres/{centre_id}/question-bank/images/{course_id}/"
+                    upload_figures(sb, bank, prefix, Path(tmp))
+                    text = text.replace(json.dumps(IMG_PREFIX)[:-1], json.dumps(prefix)[:-1])
+                body = ('{"p_centre": %s, "p_course": %s, "p_topic": %s, "p_source_path": %s, "p_sha256": %s, "p_data": %s}' % (
+                    json.dumps(centre_id), json.dumps(course_id), json.dumps(info.topic), json.dumps(source_path),
+                    json.dumps(sha), text)).encode()
                 result = json.loads(sb._request("POST", "/rest/v1/rpc/import_question_bank", body, {"Content-Type": "application/json"}))
             except Exception as err:  # the whole file rolled back
                 failures += 1

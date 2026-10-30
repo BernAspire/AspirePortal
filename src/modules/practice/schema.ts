@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { blockSchema } from "@/modules/question-bank/ui";
+import { blockSchema, richSchema } from "@/modules/question-bank/ui";
 
 export const PRACTICE_COUNTS = [5, 10, 15] as const;
 export const DIFFICULTY_CHOICES = ["easy", "medium", "hard", "mixed"] as const;
@@ -19,7 +19,8 @@ export type StartPracticeState = { readonly error?: string };
 
 export const practiceResponse = z.union([
   z.object({ choice: z.number().int().min(1).max(6) }).strict(),
-  z.object({ parts: z.array(z.string().max(200)).min(1).max(6) }).strict(),
+  z.object({ parts: z.array(z.string().max(200)).min(1).max(8) }).strict(),
+  z.object({ self: z.boolean() }).strict(),
   z.object({ gave_up: z.literal(true) }).strict(),
 ]);
 export type PracticeResponse = z.infer<typeof practiceResponse>;
@@ -39,8 +40,9 @@ export const practiceResult = z
     answer: z.discriminatedUnion("kind", [
       z.object({ kind: z.literal("choice"), correct: z.number().int() }),
       z.object({ kind: z.literal("text"), parts: z.array(z.object({ label: z.string(), text: z.string() })) }),
+      z.object({ kind: z.literal("self") }),
     ]),
-    display: z.string().nullable().optional(),
+    display: z.union([z.string(), richSchema]).nullable().optional(),
     why_not: z.record(z.string(), z.string()).nullable().optional(),
     steps: z.array(blockSchema),
   })
@@ -55,6 +57,14 @@ export const practiceResult = z
     steps: r.steps,
   }));
 export type PracticeResult = z.infer<typeof practiceResult>;
+
+/** The worked solution of a self-checked question, shown before the student marks it. */
+export const practiceSolution = z
+  .object({ display: z.union([z.string(), richSchema]).nullable().optional(), steps: z.array(blockSchema) })
+  .transform((r) => ({ display: r.display ?? null, steps: r.steps }));
+export type PracticeSolution = z.infer<typeof practiceSolution>;
+export const solutionInput = z.object({ sessionId: z.uuid(), position: z.number().int().min(1).max(50) });
+export type SolutionResult = { readonly ok: true; readonly solution: PracticeSolution } | { readonly ok: false };
 
 export type SubmitAnswerResult =
   | { readonly ok: true; readonly result: PracticeResult }

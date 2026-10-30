@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 
 import { cn } from "@/lib/utils";
-import type { PracticeResponse, PracticeResult, SubmitAnswerResult } from "@/modules/practice/schema";
-import { DIFFICULTY_LABEL, QuestionBlocks, WorkedSteps, type Difficulty, type QuestionContent } from "@/modules/question-bank/ui";
+import type { PracticeResponse, PracticeResult, PracticeSolution, SolutionResult, SubmitAnswerResult } from "@/modules/practice/schema";
+import { DIFFICULTY_LABEL, QuestionBlocks, RichText, WorkedSteps, type Difficulty, type QuestionContent } from "@/modules/question-bank/ui";
 
 export interface RunnerQuestion {
   readonly position: number;
@@ -29,6 +29,16 @@ export interface PracticeRunnerProps {
   /** Questions the student has bookmarked (unresolved). */
   readonly bookmarked: readonly string[];
   readonly setBookmark: (input: unknown) => Promise<{ ok: boolean }>;
+  /** Worked solution of a self-checked question, before the student marks it. */
+  readonly solution: (input: unknown) => Promise<SolutionResult>;
+}
+
+/** "a" → "(a) Answer", "(a)" → "(a) Answer", "Length" → "Length: Answer". */
+function boxLabel(label: string): string {
+  if (!label) return "Answer";
+  if (/^\(/.test(label)) return `${label} Answer`;
+  if (/^[a-h]$/.test(label)) return `(${label}) Answer`;
+  return `${label}: Answer`;
 }
 
 const focus = "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
@@ -55,6 +65,7 @@ export function PracticeRunner(props: PracticeRunnerProps) {
   const [choice, setChoice] = useState<number | null>(null);
   const [parts, setParts] = useState<readonly string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [solutions, setSolutions] = useState<ReadonlyMap<number, PracticeSolution>>(() => new Map());
   const [pending, startTransition] = useTransition();
   const [marks, setMarks] = useState<ReadonlySet<string>>(() => new Set(props.bookmarked));
   const [, startMark] = useTransition();
@@ -86,6 +97,15 @@ export function PracticeRunner(props: PracticeRunnerProps) {
       const out = await props.submit({ sessionId: props.sessionId, position, response });
       if (out.ok) setResults((m) => new Map(m).set(position, out.result));
       else setError(REASON[out.reason]);
+    });
+  };
+
+  const reveal = (position: number) => {
+    setError(null);
+    startTransition(async () => {
+      const out = await props.solution({ sessionId: props.sessionId, position });
+      if (out.ok) setSolutions((m) => new Map(m).set(position, out.solution));
+      else setError(REASON.unavailable);
     });
   };
 
@@ -138,11 +158,14 @@ export function PracticeRunner(props: PracticeRunnerProps) {
         <article className="flex flex-col gap-4 rounded-[14px] border border-border bg-card p-5" aria-labelledby="q-title">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <h2 id="q-title" className="mr-auto flex flex-wrap items-baseline gap-x-2 text-[13px] font-semibold text-[#3D4146]">
-              <span className="rounded-md bg-foreground px-2 py-0.5 text-sm font-bold tabular-nums text-white">Q{q.ref}</span>
+              <span className="rounded-md bg-foreground px-2 py-0.5 text-sm font-bold tabular-nums text-white">
+                {/^Q/i.test(q.ref) ? q.ref : `Q${q.ref}`}
+              </span>
               <span>{q.sectionTitle}</span>
             </h2>
             <span className={cn("rounded-full px-2.5 py-0.5 font-semibold", DIFF_STYLE[q.difficulty])}>{DIFFICULTY_LABEL[q.difficulty]}</span>
             {q.marks ? <span className="rounded-full bg-secondary px-2.5 py-0.5 font-semibold">{q.marks} marks</span> : null}
+            {q.content.extra ? <span className="rounded-full bg-secondary px-2.5 py-0.5 font-semibold">Extra practice</span> : null}
             <button
               type="button"
               aria-pressed={marks.has(q.questionId)}
@@ -190,7 +213,9 @@ export function PracticeRunner(props: PracticeRunnerProps) {
                   >
                     <span className="font-semibold tabular-nums">({n})</span>
                     <span className="flex flex-col">
-                      <span>{c}</span>
+                      <span>
+                        <RichText value={c} />
+                      </span>
                       {result && pickedHere && !isRight && result.whyNot[String(n)] ? (
                         <span className="mt-1 text-[13px] text-[#9B1C1C]">{result.whyNot[String(n)]}</span>
                       ) : null}
@@ -199,13 +224,21 @@ export function PracticeRunner(props: PracticeRunnerProps) {
                 );
               })}
             </div>
+          ) : q.content.self_check ? (
+            !result && !solutions.has(q.position) ? (
+              <p className="rounded-xl bg-[#EEF4FB] px-4 py-3 text-sm text-[#1D4E89]">
+                {q.content.self_check === "draw"
+                  ? "Draw or write your answer on paper, then compare it with the worked solution."
+                  : "Work it out on paper, then compare your answer with the worked solution."}
+              </p>
+            ) : null
           ) : (
             <div className="flex flex-col gap-2.5">
               {q.content.parts.map((label, i) => {
                 const given = result?.response && "parts" in result.response ? result.response.parts[i] ?? "" : undefined;
                 return (
                   <label key={i} className="flex flex-wrap items-center gap-2.5">
-                    <span className="min-w-20 text-sm font-semibold">{label ? `(${label}) Answer` : "Answer"}</span>
+                    <span className="min-w-20 text-sm font-semibold">{boxLabel(label)}</span>
                     <input
                       type="text"
                       inputMode="text"
@@ -229,6 +262,7 @@ export function PracticeRunner(props: PracticeRunnerProps) {
                   </label>
                 );
               })}
+              {q.content.hint && !result ? <p className="text-[13px] text-[#5F6368]">{q.content.hint}</p> : null}
             </div>
           )}
 
@@ -238,7 +272,43 @@ export function PracticeRunner(props: PracticeRunnerProps) {
             </p>
           ) : null}
 
-          {!result ? (
+          {!result && q.content.self_check ? (
+            solutions.has(q.position) ? (
+              <section aria-live="polite" className="flex flex-col gap-3">
+                <SolutionPanel display={solutions.get(q.position)?.display ?? null} steps={solutions.get(q.position)?.steps ?? []} />
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <span className="text-sm font-semibold">How did you do?</span>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => send(q.position, { self: true })}
+                    className={cn("min-h-11 rounded-full bg-[#1F8A50] px-5 text-sm font-bold text-white disabled:opacity-50", focus)}
+                  >
+                    I got it right
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => send(q.position, { self: false })}
+                    className={cn("min-h-11 rounded-full border border-border bg-white px-5 text-sm font-semibold hover:bg-accent", focus)}
+                  >
+                    I got it wrong
+                  </button>
+                </div>
+              </section>
+            ) : (
+              <div>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => reveal(q.position)}
+                  className={cn("min-h-11 rounded-full bg-brand px-6 text-sm font-bold hover:bg-brand-strong disabled:opacity-50", focus)}
+                >
+                  {pending ? "Loading…" : "Check with the worked solution"}
+                </button>
+              </div>
+            )
+          ) : !result ? (
             <div className="flex flex-wrap gap-2.5">
               <button
                 type="button"
@@ -267,18 +337,17 @@ export function PracticeRunner(props: PracticeRunnerProps) {
                   result.correct ? "bg-[#E6F4EC] text-[#145C38]" : "bg-[#FDECEC] text-[#9B1C1C]",
                 )}
               >
-                {result.correct ? "Correct! Well done." : result.gaveUp ? "Here's how to solve it." : "Not quite. Here's how to solve it."}
-                {result.display ? <span className="ml-1 font-normal text-foreground">Answer: {result.display}</span> : null}
+                {result.answer.kind === "self" && !result.gaveUp
+                  ? result.correct
+                    ? "Marked as right. Well done."
+                    : "Marked as wrong. Try it again later."
+                  : result.correct
+                    ? "Correct! Well done."
+                    : result.gaveUp
+                      ? "Here's how to solve it."
+                      : "Not quite. Here's how to solve it."}
               </p>
-              <div className="rounded-xl bg-[#F7F7F5] px-4 py-3">
-                <p className="mb-1.5 text-[13px] font-semibold uppercase tracking-[.05em] text-[#5F6368]">Worked solution</p>
-                {q.strategy ? (
-                  <p className="mb-1.5 text-sm">
-                    Strategy: <strong>{q.strategy}</strong>
-                  </p>
-                ) : null}
-                <WorkedSteps steps={result.steps} />
-              </div>
+              <SolutionPanel display={result.display} steps={result.steps} strategy={q.strategy} />
               <div>
                 {nextOpen(q.position) ? (
                   <button
@@ -318,6 +387,25 @@ export function PracticeRunner(props: PracticeRunnerProps) {
           </Link>
         </section>
       )}
+    </div>
+  );
+}
+
+function SolutionPanel({ display, steps, strategy }: { display: PracticeResult["display"]; steps: PracticeResult["steps"]; strategy?: string | null }) {
+  return (
+    <div className="rounded-xl bg-[#F7F7F5] px-4 py-3">
+      {display && display.length > 0 ? (
+        <p className="mb-2 text-[15px] font-semibold">
+          Answer: <RichText value={display} />
+        </p>
+      ) : null}
+      <p className="mb-1.5 text-[13px] font-semibold uppercase tracking-[.05em] text-[#5F6368]">Worked solution</p>
+      {strategy ? (
+        <p className="mb-1.5 text-sm">
+          Strategy: <strong>{strategy}</strong>
+        </p>
+      ) : null}
+      <WorkedSteps steps={steps} />
     </div>
   );
 }
