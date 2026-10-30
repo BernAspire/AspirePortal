@@ -43,7 +43,7 @@ create table public.revision_reviews (
   foreign key (centre_id, session_id) references public.practice_sessions (centre_id, id)
 );
 create index revision_reviews_student_idx on public.revision_reviews (centre_id, student_id, reviewed_on desc);
-create trigger revision_reviews_append_only before update on public.revision_reviews
+create trigger revision_reviews_append_only before update or delete on public.revision_reviews
   for each row execute function app.reject_change();
 
 -- ---------------------------------------------------------------------------
@@ -140,8 +140,7 @@ $$;
 revoke all on function app.section_course(uuid, uuid) from public;
 revoke all on function app.active_exam(uuid, uuid, uuid) from public;
 revoke all on function app.next_interval(int, int, int, boolean) from public;
-grant execute on function app.section_course(uuid, uuid) to authenticated, service_role;
-grant execute on function app.active_exam(uuid, uuid, uuid) to authenticated, service_role;
+-- section_course and active_exam are only used inside the security-definer functions below.
 grant execute on function app.next_interval(int, int, int, boolean) to authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
@@ -155,7 +154,12 @@ as $$
 declare
   r record;
   v_day date := (now() at time zone 'Asia/Singapore')::date;
+  v_exam date := app.active_exam(new.centre_id, new.student_id, new.course_id);
+  v_cur int;
+  v_due date;
+  v_calc int;
   v_next int;
+  v_next_due date;
 begin
   for r in
     select q.section_id, count(*)::int as answered, count(*) filter (where a.correct)::int as correct
@@ -164,18 +168,35 @@ begin
     where a.centre_id = new.centre_id and a.session_id = new.id
     group by q.section_id
   loop
-    select app.next_interval(coalesce(s.interval_days, 0), r.answered, r.correct,
-                             app.active_exam(new.centre_id, new.student_id, new.course_id) is not null)
-      into v_next
-      from (select 1) one
-      left join public.revision_states s
-        on s.centre_id = new.centre_id and s.student_id = new.student_id and s.section_id = r.section_id;
+    -- Lock the student's row for this sub-topic so two sets finishing together don't lose a step.
+    insert into public.revision_states (centre_id, student_id, section_id)
+    values (new.centre_id, new.student_id, r.section_id)
+    on conflict (centre_id, student_id, section_id) do nothing;
+    select coalesce(s.interval_days, 0), s.due_on into v_cur, v_due
+      from public.revision_states s
+     where s.centre_id = new.centre_id and s.student_id = new.student_id and s.section_id = r.section_id
+       for update;
 
-    insert into public.revision_states (centre_id, student_id, section_id, interval_days, due_on, last_reviewed_at, updated_at)
-    values (new.centre_id, new.student_id, r.section_id, v_next, v_day + v_next, now(), now())
-    on conflict (centre_id, student_id, section_id) do update
-      set interval_days = excluded.interval_days, due_on = excluded.due_on,
-          last_reviewed_at = excluded.last_reviewed_at, updated_at = now();
+    v_calc := app.next_interval(v_cur, r.answered, r.correct, v_exam is not null);
+    if r.answered >= 3 and (v_due is null or v_due <= v_day) then
+      -- A real review of a sub-topic that is due (or new): move along the ladder.
+      v_next := v_calc;  v_next_due := v_day + v_calc;
+    elsif v_cur = 0 then
+      -- First, very short practice: look again tomorrow.
+      v_next := 1;  v_next_due := v_day + 1;
+    elsif v_calc < v_cur then
+      -- Extra practice before it was due only ever brings a weak sub-topic back sooner.
+      v_next := v_calc;  v_next_due := least(v_due, v_day + v_calc);
+    else
+      -- Practising early or with very few questions doesn't push the review further out.
+      v_next := v_cur;  v_next_due := v_due;
+    end if;
+    if v_exam is not null and v_exam > v_day then v_next_due := least(v_next_due, v_exam - 1); end if;
+    v_next_due := greatest(v_next_due, v_day + 1);
+
+    update public.revision_states s
+       set interval_days = v_next, due_on = v_next_due, last_reviewed_at = now(), updated_at = now()
+     where s.centre_id = new.centre_id and s.student_id = new.student_id and s.section_id = r.section_id;
 
     insert into public.revision_reviews (centre_id, student_id, section_id, session_id, answered, correct, interval_days, reviewed_on)
     values (new.centre_id, new.student_id, r.section_id, new.id, r.answered, r.correct, v_next, v_day)
@@ -220,8 +241,11 @@ set search_path = ''
 as $$
 declare v_student uuid := app.my_student_id(p_centre);
 begin
-  if v_student is null or not app.can_learn_course(p_centre, app.section_course(p_centre, p_section)) then
+  if v_student is null or not app.has_course_access(v_student, app.section_course(p_centre, p_section)) then
     raise exception 'not allowed' using errcode = '42501';
+  end if;
+  if not app.has_consent(p_centre, v_student, 'service') then
+    raise exception 'consent required' using errcode = '42501', hint = 'consent';
   end if;
   if p_confidence is not null and p_confidence not between 1 and 5 then
     raise exception 'confidence must be 1–5' using errcode = '22023';
@@ -252,7 +276,41 @@ begin
       raise exception 'no such upcoming exam for this course' using errcode = '22023';
     end if;
     insert into public.revision_exam_modes (centre_id, student_id, course_id, exam_id) values (p_centre, v_student, p_course, p_exam);
+    -- Reviews scheduled after the exam come forward to the day before it.
+    update public.revision_states s
+       set due_on = greatest(e.exam_on - 1, (now() at time zone 'Asia/Singapore')::date), updated_at = now()
+      from public.exam_dates e
+     where e.centre_id = p_centre and e.id = p_exam
+       and s.centre_id = p_centre and s.student_id = v_student and s.due_on >= e.exam_on
+       and app.section_course(p_centre, s.section_id) = p_course;
   end if;
+end;
+$$;
+
+-- Bookmarks a question (again, if an earlier bookmark was resolved) or removes the bookmark.
+create or replace function public.set_bookmark(p_centre uuid, p_question uuid, p_on boolean)
+returns void
+language plpgsql security definer
+set search_path = ''
+as $$
+declare v_student uuid := app.my_student_id(p_centre);
+begin
+  if v_student is null then raise exception 'not a student of this centre' using errcode = '42501'; end if;
+  if not p_on then
+    delete from public.question_bookmarks b where b.centre_id = p_centre and b.student_id = v_student and b.question_id = p_question;
+    return;
+  end if;
+  if not app.has_consent(p_centre, v_student, 'service') then
+    raise exception 'consent required' using errcode = '42501', hint = 'consent';
+  end if;
+  if not exists (select 1 from public.questions q
+                 where q.centre_id = p_centre and q.id = p_question and q.status = 'active'
+                   and app.has_course_access(v_student, q.course_id)) then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
+  insert into public.question_bookmarks (centre_id, student_id, question_id)
+  values (p_centre, v_student, p_question)
+  on conflict (centre_id, student_id, question_id) do update set resolved_at = null, created_at = now();
 end;
 $$;
 
@@ -370,6 +428,8 @@ revoke all on function public.set_topic_confidence(uuid, uuid, int) from public,
 revoke all on function public.start_bookmark_practice(uuid, uuid, uuid) from public, anon;
 revoke all on function public.my_revision(uuid) from public, anon;
 revoke all on function public.set_exam_mode(uuid, uuid, uuid) from public, anon;
+revoke all on function public.set_bookmark(uuid, uuid, boolean) from public, anon;
+grant execute on function public.set_bookmark(uuid, uuid, boolean) to authenticated;
 grant execute on function public.set_exam_mode(uuid, uuid, uuid) to authenticated;
 grant execute on function public.set_topic_confidence(uuid, uuid, int) to authenticated;
 grant execute on function public.start_bookmark_practice(uuid, uuid, uuid) to authenticated;
@@ -386,6 +446,16 @@ set search_path = ''
 as $$
 declare v_n int;
 begin
+  -- Before-Exam Mode ends once its exam has passed, and when the centre moves the exam's date
+  -- (so last year's mode never switches itself back on for next year's exam).
+  delete from public.revision_exam_modes m
+   using public.exam_dates e
+   where m.centre_id = p_centre and e.centre_id = m.centre_id and e.id = m.exam_id
+     and (e.exam_on < (now() at time zone 'Asia/Singapore')::date
+          or (e.student_id is null and exists (
+                select 1 from jsonb_array_elements(p_exams) x
+                where (x ->> 'course_id')::uuid = e.course_id and lower(trim(x ->> 'name')) = lower(e.name)
+                  and (x ->> 'exam_on')::date <> e.exam_on)));
   delete from public.exam_dates e
    where e.centre_id = p_centre and e.student_id is null
      and e.exam_on >= (now() at time zone 'Asia/Singapore')::date
@@ -393,8 +463,10 @@ begin
      and not exists (select 1 from jsonb_array_elements(p_exams) x
                      where (x ->> 'course_id')::uuid = e.course_id and lower(trim(x ->> 'name')) = lower(e.name));
   insert into public.exam_dates (centre_id, course_id, name, exam_on)
-  select p_centre, (x ->> 'course_id')::uuid, trim(x ->> 'name'), (x ->> 'exam_on')::date
+  select distinct on ((x ->> 'course_id')::uuid, lower(trim(x ->> 'name')))
+         p_centre, (x ->> 'course_id')::uuid, trim(x ->> 'name'), (x ->> 'exam_on')::date
   from jsonb_array_elements(p_exams) x
+  order by (x ->> 'course_id')::uuid, lower(trim(x ->> 'name'))
   on conflict (centre_id, course_id, lower(name)) where student_id is null do update set exam_on = excluded.exam_on;
   get diagnostics v_n = row_count;
   return v_n;
@@ -429,6 +501,7 @@ create policy exam_dates_family_select on public.exam_dates for select to authen
 create policy exam_dates_student_insert on public.exam_dates for insert to authenticated
   with check (student_id = (select app.my_student_id(centre_id))
               and (select app.has_course_access(student_id, course_id))
+              and (select app.has_consent(centre_id, student_id, 'service'))
               and exam_on >= (now() at time zone 'Asia/Singapore')::date
               and exam_on <= (now() at time zone 'Asia/Singapore')::date + 730);
 create policy exam_dates_student_delete on public.exam_dates for delete to authenticated
@@ -440,13 +513,8 @@ create policy revision_exam_modes_select on public.revision_exam_modes for selec
   using ((select app.is_staff(centre_id)) or student_id in (select app.family_student_ids(centre_id)));
 revoke insert, update, delete on public.revision_exam_modes from anon, authenticated;
 
--- Bookmarks: the student adds and removes their own, on questions they can read.
+-- Bookmarks: read by the family and staff; the student changes their own only through set_bookmark().
 create policy question_bookmarks_select on public.question_bookmarks for select to authenticated
   using ((select app.is_staff(centre_id)) or student_id in (select app.family_student_ids(centre_id)));
-create policy question_bookmarks_insert on public.question_bookmarks for insert to authenticated
-  with check (student_id = (select app.my_student_id(centre_id))
-              and resolved_at is null
-              and (select app.can_read_question(centre_id, question_id)));
-create policy question_bookmarks_delete on public.question_bookmarks for delete to authenticated
-  using (student_id = (select app.my_student_id(centre_id)));
-revoke update on public.question_bookmarks from authenticated;
+-- Added, re-opened and removed only through set_bookmark().
+revoke insert, update, delete on public.question_bookmarks from anon, authenticated;

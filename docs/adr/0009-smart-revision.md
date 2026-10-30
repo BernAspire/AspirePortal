@@ -17,6 +17,15 @@ The Aspire Online mockup and the owner's recording show a Smart Revision area wi
 7. **Revision Materials: later.** The tab exists and says materials are coming.
 8. **Offers ("Recommended for you")** are a separate PR. The owner asked for them to be shown to students with no payment; that needs its own ADR and an update to the CLAUDE.md PDPA line, and will keep the guardian marketing-consent check.
 
+## Hardening (from independent review)
+
+- A sub-topic moves up the ladder only when it is due (or new) and the set had at least 3 of its questions. Extra practice before the due date can bring a weak sub-topic back sooner, never push it further out. The state row is locked while it is updated.
+- With Before-Exam Mode on, reviews are never scheduled on or after the exam day; switching the mode on brings later reviews forward to the day before.
+- Confidence ratings, bookmarks and own exams need the guardian's service consent, like practice. Confidence uses the student's own course access.
+- Bookmarks change only through `set_bookmark`, which can re-open a resolved bookmark.
+- `revision_reviews` rejects deletes as well as updates. `app.active_exam` and `app.section_course` are no longer callable by signed-in users.
+- Loading exam dates ends Before-Exam Mode on exams that have passed or whose date the centre moved, and ignores a name listed twice.
+
 ## Module boundaries
 
 `start_bookmark_practice` writes practice tables, and the `schedule_reviews` / `resolve_bookmark` triggers react to practice tables. These are database functions owned by the revision migration; the app-level rule (a module writes only its own tables) still holds because the revision module's TypeScript writes only revision tables and calls practice through `modules/practice`. Practice itself knows nothing about revision.

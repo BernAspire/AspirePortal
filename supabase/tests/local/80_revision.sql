@@ -25,6 +25,10 @@ select test.expect(((select count(*) from public.revision_reviews where section_
 select test.expect((select count(*) from public.revision_states where section_id = test.mixed() and due_on > current_date - 1), 1,
   'schedule: the sub-topic has a next review date');
 select test.expect_error($q$update public.revision_reviews set correct = 0$q$, '42501', 'reviews are append-only');
+select test.expect_error($q$delete from public.revision_reviews$q$, '42501', 'reviews cannot be deleted');
+select test.expect(((select count(*) from public.revision_reviews where section_id = test.mixed()) > 1 and
+  (select interval_days from public.revision_states where section_id = test.mixed()) <= 3)::int, 1,
+  'schedule: many sets on one day do not run the sub-topic up the ladder');
 
 -- ---------------------------------------------------------------------------
 -- 3. Confidence
@@ -61,23 +65,22 @@ insert into test.ids select 'bq', id from public.questions where centre_id = 'b0
 begin;
 select test.login('aaaaaaaa-0000-0000-0000-000000000003');
 set local role authenticated;
-insert into public.question_bookmarks (centre_id, student_id, question_id)
-select 'a0000000-0000-0000-0000-000000000000', 'a4000000-0000-0000-0000-000000000000', q.id from public.questions q where q.external_ref = 'r3';
-select test.expect((select count(*) from public.question_bookmarks), 1, 'bookmarks: a student bookmarks a question');
+select public.set_bookmark('a0000000-0000-0000-0000-000000000000', q.id, true) from public.questions q where q.external_ref = 'r3';
+select public.set_bookmark('a0000000-0000-0000-0000-000000000000', q.id, true) from public.questions q where q.external_ref = 'r3';
+select test.expect((select count(*) from public.question_bookmarks), 1, 'bookmarks: a student bookmarks a question (twice is still once)');
 commit;
 begin;
 select test.login('aaaaaaaa-0000-0000-0000-000000000003');
 set local role authenticated;
-select test.expect_error($q$insert into public.question_bookmarks (centre_id, student_id, question_id)
-  values ('a0000000-0000-0000-0000-000000000000', 'a4000000-0000-0000-0000-000000000000', (select id from test.ids where name = 'bq'))$q$,
+select test.expect_error($q$select public.set_bookmark('a0000000-0000-0000-0000-000000000000', (select id from test.ids where name = 'bq'), true)$q$,
   '42501', 'bookmarks: not on another centre''s questions');
 commit;
 begin;
 select test.login('aaaaaaaa-0000-0000-0000-000000000003');
 set local role authenticated;
 select test.expect_error($q$insert into public.question_bookmarks (centre_id, student_id, question_id)
-  select 'a0000000-0000-0000-0000-000000000000', 'a4000000-0000-0000-0000-000000000001', q.id from public.questions q where q.external_ref = 'r4'$q$,
-  '42501', 'bookmarks: not for a brother''s account');
+  select 'a0000000-0000-0000-0000-000000000000', 'a4000000-0000-0000-0000-000000000000', q.id from public.questions q where q.external_ref = 'r4'$q$,
+  '42501', 'bookmarks: only through set_bookmark');
 select test.expect_error($q$update public.question_bookmarks set resolved_at = now()$q$, '42501',
   'bookmarks: students cannot mark them resolved by hand');
 commit;
@@ -170,5 +173,47 @@ select public.apply_exam_dates('a0000000-0000-0000-0000-000000000000',
 select test.expect((select count(*) from public.exam_dates where name = 'SA2'), 0, 'exams: a centre exam no longer listed is removed');
 select test.expect((select count(*) from public.revision_exam_modes), 0, 'exam mode: ends when its exam is removed');
 select test.expect((select count(*) from public.exam_dates where name = 'School WA3'), 1, 'exams: the student''s own exam is untouched');
+
+
+-- A centre that moves an exam's date ends Before-Exam Mode on it (no surprise exam mode next year).
+-- Bringing far-off reviews forward when the mode is switched on.
+update public.revision_states set due_on = current_date + 50 where section_id = test.mixed();
+begin;
+select test.login('aaaaaaaa-0000-0000-0000-000000000003');
+set local role authenticated;
+select public.set_exam_mode('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001',
+  (select id from public.exam_dates where name = 'Prelim'));
+select test.expect((select due_on from public.revision_states where section_id = test.mixed()) - current_date, 29,
+  'exam mode: reviews after the exam come forward to the day before');
+commit;
+select public.apply_exam_dates('a0000000-0000-0000-0000-000000000000',
+  jsonb_build_array(jsonb_build_object('course_id', 'c0000000-0000-0000-0000-000000000001', 'name', 'Prelim', 'exam_on', current_date + 40),
+                    jsonb_build_object('course_id', 'c0000000-0000-0000-0000-000000000001', 'name', 'prelim', 'exam_on', current_date + 40)));
+select test.expect((select count(*) from public.revision_exam_modes), 0, 'exam mode: ends when the centre moves the exam date');
+select test.expect((select count(*) from public.exam_dates where lower(name) = 'prelim'), 1, 'exams: a name listed twice is loaded once');
+
+-- A resolved bookmark can be bookmarked again.
+begin;
+select test.login('aaaaaaaa-0000-0000-0000-000000000003');
+set local role authenticated;
+select public.set_bookmark('a0000000-0000-0000-0000-000000000000', q.id, true) from public.questions q where q.external_ref = 'r3';
+select test.expect((select count(*) from public.question_bookmarks where resolved_at is null), 1, 'bookmarks: a resolved bookmark can be set again');
+select public.set_bookmark('a0000000-0000-0000-0000-000000000000', q.id, false) from public.questions q where q.external_ref = 'r3';
+select test.expect((select count(*) from public.question_bookmarks), 0, 'bookmarks: and removed');
+commit;
+
+-- Without guardian consent, nothing new is recorded about the student (PDPA).
+update public.consents set withdrawn_at = now() where student_id = 'a4000000-0000-0000-0000-000000000000' and withdrawn_at is null;
+begin;
+select test.login('aaaaaaaa-0000-0000-0000-000000000003');
+set local role authenticated;
+select test.expect_error($q$select public.set_topic_confidence('a0000000-0000-0000-0000-000000000000', test.mixed(), 3)$q$, '42501',
+  'consent: no confidence ratings without consent');
+select test.expect_error($q$select public.set_bookmark('a0000000-0000-0000-0000-000000000000', q.id, true) from public.questions q where q.external_ref = 'r5'$q$,
+  '42501', 'consent: no bookmarks without consent');
+select test.expect_error($q$insert into public.exam_dates (centre_id, course_id, student_id, name, exam_on)
+  values ('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001', 'a4000000-0000-0000-0000-000000000000', 'WA4', current_date + 10)$q$,
+  '42501', 'consent: no own exams without consent');
+commit;
 
 select 'ALL REVISION TESTS PASSED' as result;

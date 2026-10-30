@@ -43,22 +43,13 @@ export async function setBookmark(input: unknown): Promise<RevisionActionResult>
   const { centre } = await requirePortal("student", REVISION_PATH);
   const parsed = bookmarkInput.safeParse(input);
   if (!parsed.success) return FAILED;
-  const student = await getMyStudent(centre.centreId);
-  if (!student) return FAILED;
   const supabase = await createClient();
-  const { error } = parsed.data.on
-    ? await supabase
-        .from("question_bookmarks")
-        .upsert(
-          { centre_id: centre.centreId, student_id: student.id, question_id: parsed.data.questionId },
-          { onConflict: "centre_id,student_id,question_id", ignoreDuplicates: true },
-        )
-    : await supabase
-        .from("question_bookmarks")
-        .delete()
-        .eq("centre_id", centre.centreId)
-        .eq("student_id", student.id)
-        .eq("question_id", parsed.data.questionId);
+  // One function so a resolved bookmark can be set again and consent is checked (ADR 0009).
+  const { error } = await supabase.rpc("set_bookmark", {
+    p_centre: centre.centreId,
+    p_question: parsed.data.questionId,
+    p_on: parsed.data.on,
+  });
   return error ? FAILED : { ok: true };
 }
 
