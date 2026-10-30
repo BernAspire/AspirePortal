@@ -1,14 +1,16 @@
 // Public API of the question-bank module (server side). Other modules import only from here
 // or, in client components, from ./ui (the renderer without server-only queries).
-export { getCoursesWithQuestions, getPracticeTopics, getQuestionVersions, listCurrentQuestions, type CurrentQuestion } from "./queries";
-export { QuestionBlocks, QuestionTable, WorkedSteps } from "./render/question-blocks";
+export { getCoursesWithQuestions, getPracticeTopics, getQuestionVersions, listCurrentQuestions, withFigureUrls, type CurrentQuestion } from "./queries";
+export { QuestionBlocks, QuestionTable, RichText, WorkedSteps } from "./render/question-blocks";
 export {
   blockSchema,
   DIFFICULTY_LABEL,
+  questionLabel,
   type Block,
   type Difficulty,
   type PracticeSection,
   type PracticeTopic,
   type QuestionContent,
   type QuestionView,
+  type Rich,
 } from "./schema";

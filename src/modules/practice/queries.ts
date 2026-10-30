@@ -4,6 +4,7 @@ import { cache } from "react";
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
+import { withFigureUrls } from "@/modules/question-bank";
 
 import { itemRow, practiceResult, sessionRow, type PracticeItem, type PracticeResult, type PracticeSessionInfo } from "./schema";
 
@@ -35,7 +36,7 @@ export const getPracticeSession = cache(
       supabase.rpc("practice_results", { p_session: sessionId }),
     ]);
     if (itemError || resultError) throw new Error("Could not load this practice.");
-    const results = z.array(practiceResult).parse(resultData);
+    const results = await withFigureUrls(z.array(practiceResult).parse(resultData));
     return { session, items: z.array(itemRow).parse(itemData), results: new Map(results.map((r) => [r.position, r])) };
   },
 );

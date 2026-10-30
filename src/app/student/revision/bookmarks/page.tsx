@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { cn } from "@/lib/utils";
-import { listCurrentQuestions, QuestionBlocks } from "@/modules/question-bank";
+import { listCurrentQuestions, QuestionBlocks, questionLabel } from "@/modules/question-bank";
 import { getBookmarks, setBookmark, startBookmarkPractice } from "@/modules/revision";
 
 import { ClassesSkeleton, EmptyState } from "../../_components/class-ui";
@@ -79,7 +79,7 @@ async function Bookmarks({ searchParams }: { searchParams: PageProps<"/student/r
               <li key={v.id} className={cn(panel, "flex flex-col gap-3 px-5 py-4")}>
                 <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
                   <span className="flex items-center gap-2 font-semibold text-[#3D4146]">
-                    <span className="rounded-md bg-foreground px-2 py-0.5 text-sm font-bold text-white">Q{v.ref}</span>
+                    <span className="rounded-md bg-foreground px-2 py-0.5 text-sm font-bold text-white">{questionLabel(v.ref)}</span>
                     {v.sectionTitle}
                   </span>
                   <ActionButton
