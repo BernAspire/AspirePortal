@@ -16,9 +16,9 @@ Full plan (PRD, architecture, schema, security, gap analysis, roadmap): see the 
 - **Booking** = a student's seat in a session.
 
 > Status: BUILDING. Approved 29 Oct 2026: the student portal (plus the foundation it needs) is built in this repo with Claude; other portals are decided later.
-> Current phase: **S4 — Rewards and Progress (student-portal track)**
-> Done: Phase 0 foundation (tenancy, RLS, sign-in, student shell in the Aspire Online design); S1 schema (lessons, online-form consent, PIN lockout, lesson files); lesson importer (PowerPoint/Word → page images, GitHub job); Learn page, lesson viewer with hidden worked solutions, progress, Continue learning; student username + PIN sign-in (logins set up via `docs/runbooks/student-logins.md`); Classes: scheduling schema (classes, sessions, rosters, bookings, attendance, clash constraints, gated live-tutorial links), timetable spreadsheet import (`docs/runbooks/import-timetable.md`), My Classes, Tutorials, Calendar and Attendance pages; question bank (versions, separate answer keys, marking in the database), importer (`docs/runbooks/import-question-bank.md`), Practice setup and runner; Rewards (append-only XP ledger awarded by triggers, levels, streaks, badges) and Progress pages.
-> Next: load the real timetable; import real lessons via `docs/runbooks/import-lessons.md`; domain email sender before real users; import the real question banks; Mock Exams and Smart Revision on the question bank; Daily Drop; leagues (with the parent portal).
+> Current phase: **S5 — Smart Revision (student-portal track)**
+> Done: Phase 0 foundation (tenancy, RLS, sign-in, student shell in the Aspire Online design); S1 schema (lessons, online-form consent, PIN lockout, lesson files); lesson importer (PowerPoint/Word → page images, GitHub job); Learn page, lesson viewer with hidden worked solutions, progress, Continue learning; student username + PIN sign-in (logins set up via `docs/runbooks/student-logins.md`); Classes: scheduling schema (classes, sessions, rosters, bookings, attendance, clash constraints, gated live-tutorial links), timetable spreadsheet import (`docs/runbooks/import-timetable.md`), My Classes, Tutorials, Calendar and Attendance pages; question bank (versions, separate answer keys, marking in the database), importer (`docs/runbooks/import-question-bank.md`), Practice setup and runner; Rewards (append-only XP ledger awarded by triggers, levels, streaks, badges) and Progress pages; Smart Revision part 1 (spaced reviews per sub-topic, weak topics, confidence, centre and own exam dates with Before-Exam Mode, bookmarks; ADR 0009).
+> Next: load the real timetable; import real lessons via `docs/runbooks/import-lessons.md`; domain email sender before real users; import the real question banks; Smart Revision part 2 ("Recommended for you" offers, needs an ADR); Mock Exams on the question bank; Revision Materials; Daily Drop; leagues (with the parent portal).
 
 ---
 
@@ -88,7 +88,7 @@ docs/                          ADRs, discovery report, runbooks
 ### Data rules
 - Money: integer cents (`bigint`) + `currency`. No floats, ever. GST computed per line, rounded half-up to the cent.
 - Time: store `timestamptz` (UTC); display and compute business rules in `Asia/Singapore`.
-- Ledgers (`credit_ledger`, `payments`, `audit_log`, `webhook_events`, `xp_ledger`, `learning_events`, `tutor_messages`) are append-only. Fix mistakes with new rows. Balances, levels and totals are derived, never stored as editable numbers.
+- Ledgers (`credit_ledger`, `payments`, `audit_log`, `webhook_events`, `xp_ledger`, `revision_reviews`, `learning_events`, `tutor_messages`) are append-only. Fix mistakes with new rows. Balances, levels and totals are derived, never stored as editable numbers.
 - Tutorial and lesson credits are tracked per subject/programme (`credit_ledger.subject_id`, `programme_id`).
 - Practice and exam answers record the `question_version` they were given, so marking and history stay correct after a question is edited.
 - Invoice/receipt numbers come from `document_sequences` inside the issuing transaction (gap-free per centre).

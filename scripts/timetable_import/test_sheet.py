@@ -3,13 +3,13 @@ import unittest
 from datetime import date, datetime, time
 from pathlib import Path
 
-from sheet import (ATTENDANCE, CANCELLATIONS, CLASSES, COLUMNS, ONE_OFFS, STUDENTS, CellError, CourseRef, parse_date,
+from sheet import (ATTENDANCE, CANCELLATIONS, CLASSES, COLUMNS, EXAMS, ONE_OFFS, STUDENTS, CellError, CourseRef, parse_date,
                    parse_level, parse_time, read_rows, read_workbook)
 
 
 def sheets(**rows):
     names = {"classes": CLASSES, "students": STUDENTS, "one_offs": ONE_OFFS, "cancellations": CANCELLATIONS,
-             "attendance": ATTENDANCE}
+             "attendance": ATTENDANCE, "exams": EXAMS}
     return {names[k]: [tuple(COLUMNS[names[k]])] + [tuple(r) for r in v] for k, v in rows.items()}
 
 
@@ -108,6 +108,22 @@ class RowTests(unittest.TestCase):
         self.assertIn("Attendance row 3: Status must be one of Present, Late, Absent, Excused (got 'Sick')", tt.errors)
 
 
+class ExamTests(unittest.TestCase):
+    def test_exam_dates(self):
+        tt = read_rows(sheets(exams=[["P6", "mathematics", "PSLE", "26/9/2027"], ["P6", "Mathematics", "psle", "1/10/2027"],
+                                     ["P9", "Science", "SA2", "1/11/2027"]]))
+        self.assertEqual(tt.exams[0], {"course": CourseRef("P6", "Mathematics"), "name": "PSLE", "exam_on": date(2027, 9, 26)})
+        self.assertIn("Exams row 3: psle is listed twice for P6 Mathematics", tt.errors)
+        self.assertTrue(any(x.startswith("Exams row 4: Level") for x in tt.errors))
+        self.assertEqual(tt.exam_payload({CourseRef("P6", "Mathematics"): "c1"}),
+                         [{"course_id": "c1", "name": "PSLE", "exam_on": "2027-09-26"}])
+        self.assertIn(CourseRef("P6", "Mathematics"), tt.courses)
+
+    def test_old_workbooks_without_an_exams_sheet_still_work(self):
+        tt = read_rows({CLASSES: [tuple(COLUMNS[CLASSES])]})
+        self.assertEqual((tt.errors, tt.exams), ([], []))
+
+
 class WorkbookTests(unittest.TestCase):
     def test_template_round_trip(self):
         from make_template import build
@@ -118,7 +134,7 @@ class WorkbookTests(unittest.TestCase):
             build(path)
             empty = read_workbook(path)
             self.assertEqual((empty.errors, empty.summary()),
-                             ([], "0 classes, 0 student places, 0 one-off sessions, 0 cancellations, 0 attendance marks"))
+                             ([], "0 classes, 0 student places, 0 one-off sessions, 0 cancellations, 0 attendance marks, 0 exam dates"))
             wb = load_workbook(path)
             row = list(CLASS_ROW)
             row[8], row[10], row[11] = time(9, 0), datetime(2027, 1, 2), datetime(2027, 12, 25)  # real Excel cells

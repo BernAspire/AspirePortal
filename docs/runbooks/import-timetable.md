@@ -1,6 +1,6 @@
 # Load the timetable, student lists and attendance
 
-Until the admin portal exists, staff keep the timetable in a spreadsheet. A GitHub job reads it and updates the portal. Students then see their classes under **Classes**: My Classes, Tutorials (with a Join button for live tutorials), Calendar and Attendance.
+Until the admin portal exists, staff keep the timetable in a spreadsheet. A GitHub job reads it and updates the portal. Students then see their classes under **Classes**: My Classes, Tutorials (with a Join button for live tutorials), Calendar and Attendance, and exam dates in **Smart Revision**.
 
 ## The spreadsheet
 
@@ -13,6 +13,7 @@ Start from `docs/templates/timetable-template.xlsx` (in GitHub, open the file an
 | **One-off sessions** | single session | e.g. academic coaching; client codes separated by commas |
 | **Cancellations** | cancelled session | Class code + date (e.g. public holidays) |
 | **Attendance** | student at a session | Present, Late, Absent or Excused; only for sessions that have started |
+| **Exams** | exam for a course | Level, subject, exam name and date, e.g. P6 · Mathematics · PSLE · 26/9/2027. Students see it in Smart Revision → Before-Exam Mode. |
 
 Rules worth knowing:
 - **Each upload that lists a class replaces its upcoming sessions.** Past sessions, their bookings and attendance never change.
@@ -22,6 +23,7 @@ Rules worth knowing:
 - Branch names must match the portal's branches. Rooms are created the first time they appear.
 - The database refuses a room or a teacher in two sessions at the same time, and more students than the class's Seats.
 - Times are Singapore time.
+- **Exams:** listing a course's exams replaces its upcoming centre exams (one removed from the sheet disappears for students, and any Before-Exam Mode on it ends). Leave the sheet empty to keep them. Students' own exams are never touched.
 
 ## Each time
 
