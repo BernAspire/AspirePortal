@@ -63,8 +63,12 @@ def database_message(err: Exception) -> str:
 def apply(sb: Supabase, centre_id: str, tt: Timetable) -> dict:
     course_ids: dict[CourseRef, str] = {c: ensure_course(sb, centre_id, c) for c in tt.courses}  # type: ignore[arg-type]
     body = json.dumps({"p_centre": centre_id, "p_data": tt.payload(course_ids)}).encode()
-    out = sb._request("POST", "/rest/v1/rpc/apply_timetable", body, {"Content-Type": "application/json"})
-    return json.loads(out)
+    out = json.loads(sb._request("POST", "/rest/v1/rpc/apply_timetable", body, {"Content-Type": "application/json"}))
+    out["exams"] = 0
+    if tt.exams:
+        body = json.dumps({"p_centre": centre_id, "p_exams": tt.exam_payload(course_ids)}).encode()
+        out["exams"] = json.loads(sb._request("POST", "/rest/v1/rpc/apply_exam_dates", body, {"Content-Type": "application/json"}))
+    return out
 
 
 def cmd_inbox(args: argparse.Namespace) -> int:
@@ -111,7 +115,7 @@ def cmd_inbox(args: argparse.Namespace) -> int:
             print(f"✓ {name}: {result['classes']} classes ({result['sessions_upserted']} upcoming sessions, "
                   f"{result['sessions_removed']} removed), {result['roster_rows']} student places, "
                   f"{result['one_offs']} one-off sessions, {result['bookings_added']} new bookings, "
-                  f"{result['cancellations']} cancellations, {result['attendance']} attendance marks")
+                  f"{result['cancellations']} cancellations, {result['attendance']} attendance marks, {result['exams']} exam dates")
             sb.move(INBOX, name, f"done/{stamp}/{name}")
     return 1 if failures else 0
 

@@ -25,6 +25,7 @@ STUDENTS = "Students"
 ONE_OFFS = "One-off sessions"
 CANCELLATIONS = "Cancellations"
 ATTENDANCE = "Attendance"
+EXAMS = "Exams"
 
 COLUMNS: dict[str, list[str]] = {
     CLASSES: ["Class code", "Level", "Subject", "Type", "Branch", "Room", "Teacher", "Day", "Start time",
@@ -34,6 +35,7 @@ COLUMNS: dict[str, list[str]] = {
                "Duration (min)", "Seats", "Meeting link", "Client codes"],
     CANCELLATIONS: ["Class code", "Date", "Reason"],
     ATTENDANCE: ["Class or one-off code", "Date", "Client code", "Status", "Note"],
+    EXAMS: ["Level", "Subject", "Exam", "Date"],
 }
 
 TYPES = {
@@ -200,11 +202,12 @@ class Timetable:
     one_offs: list[dict] = field(default_factory=list)
     cancellations: list[dict] = field(default_factory=list)
     attendance: list[dict] = field(default_factory=list)
+    exams: list[dict] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     @property
     def courses(self) -> set[CourseRef]:
-        return {r["course"] for r in self.classes + self.one_offs}
+        return {r["course"] for r in self.classes + self.one_offs + self.exams}
 
     def payload(self, course_ids: dict[CourseRef, str]) -> dict:
         """The JSON for public.apply_timetable, with courses replaced by their ids."""
@@ -224,9 +227,13 @@ class Timetable:
             "attendance": jsonable(self.attendance),
         }
 
+    def exam_payload(self, course_ids: dict[CourseRef, str]) -> list[dict]:
+        """The JSON for public.apply_exam_dates."""
+        return [{"course_id": course_ids[e["course"]], "name": e["name"], "exam_on": e["exam_on"].isoformat()} for e in self.exams]
+
     def summary(self) -> str:
         return (f"{len(self.classes)} classes, {len(self.roster)} student places, {len(self.one_offs)} one-off sessions, "
-                f"{len(self.cancellations)} cancellations, {len(self.attendance)} attendance marks")
+                f"{len(self.cancellations)} cancellations, {len(self.attendance)} attendance marks, {len(self.exams)} exam dates")
 
 
 # --- Rows -------------------------------------------------------------------------
@@ -411,6 +418,29 @@ def read_rows(sheets: dict[str, list[tuple]]) -> Timetable:
             e.append(f"{w}: Note is longer than 500 characters")
         if len(e) == before:
             tt.attendance.append({"session": code, "date": day, "client_code": client, "status": status, "note": note})
+
+    # Exams (centre-wide exam dates for Before-Exam Mode)
+    try:
+        rows = _rows(sheets[EXAMS], EXAMS)
+    except CellError as err:
+        e.append(str(err))
+        rows = []
+    seen_exams: set[tuple] = set()
+    for n, r in rows:
+        w = f"{EXAMS} row {n}"
+        before = len(e)
+        level = _cell(e, w, "Level", lambda: parse_level(r["Level"]))
+        subject = _cell(e, w, "Subject", lambda: parse_subject(r["Subject"]))
+        name = text(r["Exam"])
+        if not name or len(name) > 80:
+            e.append(f"{w}: Exam must be a name of up to 80 characters, e.g. SA2 or PSLE")
+        day = _cell(e, w, "Date", lambda: parse_date(r["Date"]))
+        key = (level, subject, (name or "").lower())
+        if len(e) == before and key in seen_exams:
+            e.append(f"{w}: {name} is listed twice for {level} {subject}")
+        if len(e) == before:
+            seen_exams.add(key)
+            tt.exams.append({"course": CourseRef(level, subject), "name": name, "exam_on": day})
 
     return tt
 

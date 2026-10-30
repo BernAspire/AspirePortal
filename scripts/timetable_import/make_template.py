@@ -13,7 +13,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.worksheet.datavalidation import DataValidation
 
-from sheet import (ATTENDANCE, CANCELLATIONS, CLASSES, COLUMNS, DAY_LABELS, ONE_OFFS, STATUS_LABELS, STUDENTS,
+from sheet import (ATTENDANCE, CANCELLATIONS, CLASSES, COLUMNS, DAY_LABELS, EXAMS, ONE_OFFS, STATUS_LABELS, STUDENTS,
                    TYPE_LABELS)
 
 HEADER_FILL = PatternFill("solid", fgColor="F5B014")
@@ -49,6 +49,10 @@ GUIDE = [
     ("One row per student per session: Present, Late, Absent or Excused. Only for sessions that have started.", False),
     ("A student who attends a session they weren't booked into (make-up, walk-in) is booked automatically.", False),
     ("", False),
+    ("Exams", True),
+    ("Exam dates for everyone on a course, e.g. P6 | Mathematics | PSLE | 26/9/2027. Students see them in Smart Revision → "
+     "Before-Exam Mode. Listing a course's exams replaces its upcoming exams; leave the sheet empty to keep them.", False),
+    ("", False),
     ("Example (Classes)", True),
     ("P5MA-SAT-0900 | P5 | Mathematics | Physical tutorial | Bishan | Room 1 | Ms Lim | Sat | 09:00 | 120 | "
      "3/1/2027 | 30/12/2027 | 12 |", False),
@@ -56,7 +60,7 @@ GUIDE = [
      "https://zoom.us/j/123456789", False),
 ]
 
-WIDTHS = {"Class code": 18, "Code": 18, "Class or one-off code": 22, "Level": 8, "Subject": 16, "Type": 20,
+WIDTHS = {"Exam": 20, "Class code": 18, "Code": 18, "Class or one-off code": 22, "Level": 8, "Subject": 16, "Type": 20,
           "Branch": 16, "Room": 12, "Teacher": 18, "Day": 8, "Start time": 11, "Duration (min)": 14,
           "First date": 13, "Last date": 13, "Date": 13, "Seats": 8, "Meeting link": 36, "Client code": 12,
           "Client codes": 30, "From date": 13, "Until date": 13, "Reason": 30, "Status": 12, "Note": 36}
@@ -72,7 +76,7 @@ def build(out: Path) -> None:
         cell.font = Font(bold=bold, size=13 if bold else 11)
         cell.alignment = Alignment(wrap_text=True, vertical="top")
 
-    for name in (CLASSES, STUDENTS, ONE_OFFS, CANCELLATIONS, ATTENDANCE):
+    for name in (CLASSES, STUDENTS, ONE_OFFS, CANCELLATIONS, ATTENDANCE, EXAMS):
         ws = wb.create_sheet(name)
         ws.append(COLUMNS[name])
         for i, col in enumerate(COLUMNS[name], start=1):

@@ -107,3 +107,38 @@ export async function getQuestionVersions(
   }
   return out;
 }
+
+export interface CurrentQuestion {
+  readonly id: string;
+  readonly ref: string;
+  readonly courseId: string;
+  readonly sectionId: string;
+  readonly sectionTitle: string;
+  readonly content: QuestionView["content"];
+}
+
+/** The current version of each question the student can read (RLS: entitled, active). */
+export async function listCurrentQuestions(centreId: string, questionIds: readonly string[]): Promise<CurrentQuestion[]> {
+  if (questionIds.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("questions")
+    .select("id, external_ref, course_id, section_id, current_version")
+    .eq("centre_id", centreId)
+    .in("id", [...questionIds]);
+  if (error) throw new Error("Could not load the questions.");
+  const rows = z
+    .array(z.object({ id: z.uuid(), external_ref: z.string(), course_id: z.uuid(), section_id: z.uuid(), current_version: z.number().int() }))
+    .parse(data);
+  const views = await getQuestionVersions(
+    centreId,
+    rows.map((r) => ({ questionId: r.id, version: r.current_version })),
+  );
+  const order = new Map(questionIds.map((id, i) => [id, i]));
+  return rows
+    .flatMap((r) => {
+      const v = views.get(`${r.id}:${r.current_version}`);
+      return v ? [{ id: r.id, ref: r.external_ref, courseId: r.course_id, sectionId: r.section_id, sectionTitle: v.sectionTitle, content: v.content }] : [];
+    })
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+}

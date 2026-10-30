@@ -6,6 +6,8 @@ import { requirePortal } from "@/lib/auth/session";
 import { getCourses } from "@/modules/academics";
 import { getPracticeSession, submitPracticeAnswer } from "@/modules/practice";
 import { getQuestionVersions } from "@/modules/question-bank";
+import { getMyStudent } from "@/modules/crm";
+import { getBookmarks, setBookmark } from "@/modules/revision";
 
 import { ClassesSkeleton } from "../../_components/class-ui";
 import { PRACTICE_PATH } from "../../_components/nav-config";
@@ -28,17 +30,30 @@ async function Session({ params }: { params: PageProps<"/student/practice/[sessi
   const data = await getPracticeSession(centre.centreId, sessionId);
   if (!data) notFound();
 
-  const [versions, courses] = await Promise.all([
+  const student = await getMyStudent(centre.centreId);
+  const [versions, courses, bookmarks] = await Promise.all([
     getQuestionVersions(
       centre.centreId,
       data.items.map((i) => ({ questionId: i.questionId, version: i.version })),
     ),
     getCourses([data.session.courseId]),
+    student ? getBookmarks(centre.centreId, student.id) : Promise.resolve([]),
   ]);
   const questions: RunnerQuestion[] = data.items.flatMap((i) => {
     const v = versions.get(`${i.questionId}:${i.version}`);
     return v
-      ? [{ position: i.position, sectionTitle: v.sectionTitle, difficulty: v.difficulty, marks: v.marks, strategy: v.strategy, ref: v.ref, content: v.content }]
+      ? [
+          {
+            position: i.position,
+            questionId: i.questionId,
+            sectionTitle: v.sectionTitle,
+            difficulty: v.difficulty,
+            marks: v.marks,
+            strategy: v.strategy,
+            ref: v.ref,
+            content: v.content,
+          },
+        ]
       : [];
   });
 
@@ -50,6 +65,8 @@ async function Session({ params }: { params: PageProps<"/student/practice/[sessi
       initialResults={[...data.results.values()]}
       setupHref={`${PRACTICE_PATH}?course=${data.session.courseId}`}
       submit={submitPracticeAnswer}
+      bookmarked={bookmarks.filter((b) => !b.resolved).map((b) => b.questionId)}
+      setBookmark={setBookmark}
     />
   );
 }

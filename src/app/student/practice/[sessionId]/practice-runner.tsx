@@ -9,6 +9,7 @@ import { DIFFICULTY_LABEL, QuestionBlocks, WorkedSteps, type Difficulty, type Qu
 
 export interface RunnerQuestion {
   readonly position: number;
+  readonly questionId: string;
   readonly sectionTitle: string;
   readonly difficulty: Difficulty;
   readonly marks: number | null;
@@ -25,6 +26,9 @@ export interface PracticeRunnerProps {
   readonly initialResults: readonly PracticeResult[];
   readonly setupHref: string;
   readonly submit: (input: unknown) => Promise<SubmitAnswerResult>;
+  /** Questions the student has bookmarked (unresolved). */
+  readonly bookmarked: readonly string[];
+  readonly setBookmark: (input: unknown) => Promise<{ ok: boolean }>;
 }
 
 const focus = "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
@@ -52,6 +56,19 @@ export function PracticeRunner(props: PracticeRunnerProps) {
   const [parts, setParts] = useState<readonly string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [marks, setMarks] = useState<ReadonlySet<string>>(() => new Set(props.bookmarked));
+  const [, startMark] = useTransition();
+  const toggleMark = (questionId: string) => {
+    const on = !marks.has(questionId);
+    const next = new Set(marks);
+    if (on) next.add(questionId);
+    else next.delete(questionId);
+    setMarks(next);
+    startMark(async () => {
+      const out = await props.setBookmark({ questionId, on });
+      if (!out.ok) setMarks(marks);
+    });
+  };
 
   const go = (to: number | "summary") => {
     setCurrent(to);
@@ -126,6 +143,19 @@ export function PracticeRunner(props: PracticeRunnerProps) {
             </h2>
             <span className={cn("rounded-full px-2.5 py-0.5 font-semibold", DIFF_STYLE[q.difficulty])}>{DIFFICULTY_LABEL[q.difficulty]}</span>
             {q.marks ? <span className="rounded-full bg-secondary px-2.5 py-0.5 font-semibold">{q.marks} marks</span> : null}
+            <button
+              type="button"
+              aria-pressed={marks.has(q.questionId)}
+              onClick={() => toggleMark(q.questionId)}
+              className={cn(
+                "inline-flex min-h-8 items-center gap-1 rounded-full border px-2.5 font-semibold",
+                focus,
+                marks.has(q.questionId) ? "border-[#E3A008] bg-[#FFF6DA] text-[#7A4B00]" : "border-border bg-white text-[#3D4146] hover:bg-accent",
+              )}
+            >
+              <span aria-hidden>{marks.has(q.questionId) ? "★" : "☆"}</span>
+              {marks.has(q.questionId) ? "Bookmarked" : "Bookmark"}
+            </button>
           </div>
 
           <QuestionBlocks blocks={q.content.blocks} />
