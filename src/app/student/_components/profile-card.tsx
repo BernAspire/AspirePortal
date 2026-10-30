@@ -7,6 +7,8 @@ export interface SidebarProfile {
   readonly levelName: string | null;
   readonly clientCode: string;
   readonly validity: string | null;
+  /** XP level and streak; null when rewards can't be shown. */
+  readonly rewards?: { readonly level: number; readonly inLevel: number; readonly target: number | null; readonly percent: number; readonly streak: number } | null;
 }
 
 /** Centre name as the portal's wordmark: the last word in the brand colour. */
@@ -39,6 +41,29 @@ export function ProfileCard({ profile }: { profile: SidebarProfile }) {
           ) : null}
         </span>
       </div>
+      {profile.rewards ? (
+        <div className="grid gap-1.5 px-2">
+          <div className="flex justify-between text-xs">
+            <span className="font-bold text-[#8A5A00]">Lv {profile.rewards.level}</span>
+            <span className="text-[#3D4146]">
+              {profile.rewards.target === null ? `${profile.rewards.inLevel} XP` : `${profile.rewards.inLevel}/${profile.rewards.target} XP`}
+            </span>
+          </div>
+          <span
+            role="progressbar"
+            aria-label="XP to next level"
+            aria-valuenow={profile.rewards.percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            className="block h-1.5 rounded-full bg-[#F1E6C8]"
+          >
+            <span className="block h-full rounded-full bg-[#E3A008]" style={{ width: `${profile.rewards.percent}%` }} />
+          </span>
+          {profile.rewards.streak > 0 ? (
+            <span className="text-xs font-semibold text-[#146C3E]">{profile.rewards.streak}-day streak</span>
+          ) : null}
+        </div>
+      ) : null}
       <dl className="mx-2 grid grid-cols-[auto_auto] gap-x-2.5 gap-y-1 rounded-[10px] border border-[#F1E6C8] bg-white px-2.5 py-2 text-xs">
         <dt className="text-muted-foreground">Validity</dt>
         <dd className="text-right font-semibold">

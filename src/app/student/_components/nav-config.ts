@@ -2,6 +2,8 @@ import { STUDENT_HOME_PATH } from "@/lib/auth/routing";
 
 export const LEARN_PATH = `${STUDENT_HOME_PATH}/learn`;
 export const PRACTICE_PATH = `${STUDENT_HOME_PATH}/practice`;
+export const PROGRESS_PATH = `${STUDENT_HOME_PATH}/progress`;
+export const REWARDS_PATH = `${STUDENT_HOME_PATH}/rewards`;
 export const MY_CLASSES_PATH = `${STUDENT_HOME_PATH}/classes`;
 export const TUTORIALS_PATH = `${STUDENT_HOME_PATH}/tutorials`;
 export const CALENDAR_PATH = `${STUDENT_HOME_PATH}/calendar`;
@@ -41,7 +43,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   },
   {
     label: "Progress",
-    items: [{ label: "Progress" }, { label: "Monthly Feedback" }, { label: "Rewards" }],
+    items: [{ label: "Progress", href: PROGRESS_PATH }, { label: "Monthly Feedback" }, { label: "Rewards", href: REWARDS_PATH }],
   },
 ];
 
