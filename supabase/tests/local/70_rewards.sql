@@ -48,6 +48,36 @@ select test.expect((select count(*) from public.xp_ledger where source_id = (sel
   'xp: re-submitting an answer does not award again');
 commit;
 
+-- Giving up on every question earns nothing.
+begin;
+select test.login('aaaaaaaa-0000-0000-0000-000000000003');
+set local role authenticated;
+insert into test.ids values ('rgu', public.start_practice('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001', 'manual',
+  (select array_agg(s.id) from public.question_sections s join public.question_topics t on t.id = s.topic_id where t.title = 'Rewards topic'), null, 5));
+select count(public.submit_practice_answer((select id from test.ids where name = 'rgu'), n, '{"gave_up":true}')) from generate_series(1, 5) n;
+commit;
+select test.expect((select count(*) from public.practice_sessions where id = (select id from test.ids where name = 'rgu') and finished_at is not null), 1,
+  'xp: a set where every answer was shown still finishes');
+select test.expect((select count(*) from public.xp_ledger where source_id = (select id from test.ids where name = 'rgu')), 0,
+  'xp: showing every answer earns no XP');
+
+-- Daily cap: however many sets, at most 10 practice XP a day.
+do $$
+declare v uuid;
+begin
+  perform test.login('aaaaaaaa-0000-0000-0000-000000000003');
+  for k in 1..5 loop
+    set local role authenticated;
+    v := public.start_practice('a0000000-0000-0000-0000-000000000000', 'c0000000-0000-0000-0000-000000000001', 'manual',
+      (select array_agg(s.id) from public.question_sections s join public.question_topics t on t.id = s.topic_id where t.title = 'Rewards topic'), null, 10);
+    perform public.submit_practice_answer(v, n, '{"choice":1}') from generate_series(1, 10) n;
+    reset role;
+  end loop;
+end $$;
+select test.expect((select sum(amount) from public.xp_ledger where student_id = 'a4000000-0000-0000-0000-000000000000'
+  and reason in ('practice_set', 'practice_accuracy') and activity_date = (now() at time zone 'Asia/Singapore')::date), 10,
+  'xp: practice XP is capped at 10 a day');
+
 select test.expect((select count(*) from public.xp_ledger where student_id = 'a4000000-0000-0000-0000-000000000000' and reason = 'streak_bonus'
   and activity_date = (now() at time zone 'Asia/Singapore')::date), 1, 'streak: one bonus per day, however much is done');
 
@@ -64,6 +94,17 @@ update public.lesson_progress set status = 'completed', completed_at = now() whe
 commit;
 select test.expect((select count(*) from public.xp_ledger where reason = 'lesson_part' and source_id = 'd2000000-0000-0000-0000-000000000003'), 1,
   'xp: finishing a lesson part twice earns XP once');
+-- A completion time sent by the browser is ignored: no back- or forward-dated streak days.
+begin;
+select test.login('aaaaaaaa-0000-0000-0000-000000000003');
+set local role authenticated;
+update public.lesson_progress set status = 'started', completed_at = null where lesson_part_id = 'd2000000-0000-0000-0000-000000000003';
+update public.lesson_progress set status = 'completed', completed_at = now() + interval '30 days' where lesson_part_id = 'd2000000-0000-0000-0000-000000000003';
+commit;
+select test.expect((select count(*) from public.lesson_progress where lesson_part_id = 'd2000000-0000-0000-0000-000000000003'
+  and completed_at > now() + interval '1 minute'), 0, 'lessons: the database sets the completion time');
+select test.expect((select count(*) from public.xp_ledger where student_id = 'a4000000-0000-0000-0000-000000000000'
+  and activity_date > (now() at time zone 'Asia/Singapore')::date), 0, 'streak: no future-dated streak days');
 
 -- ---------------------------------------------------------------------------
 -- 3. The ledger is append-only and only the family and staff read it

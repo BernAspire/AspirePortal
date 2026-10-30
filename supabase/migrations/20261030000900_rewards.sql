@@ -5,7 +5,8 @@
 -- derived when read (public.my_rewards), never stored as editable numbers.
 --
 -- Owner decisions (30 Oct 2026), as in the Aspire Online mockup:
---   finished practice set: +1 / +2 / +3 XP for 5 / 10 / 15 questions, +1 more at 80%+ correct
+--   finished practice set: +1 / +2 / +3 XP for 5 / 10 / 15 questions really answered (not "Show the answer"),
+--     +1 more at 80%+ correct; at most 10 practice XP per student per day
 --   finished lesson part:  +1 XP (once per part)
 --   first activity of a Singapore day (practice answer or finished lesson part): +1 streak bonus
 --   levels: 100 XP each (computed in the app, modules/engagement)
@@ -63,21 +64,27 @@ language plpgsql security definer
 set search_path = ''
 as $$
 declare
-  v_total int; v_correct int; v_xp int;
+  v_total int; v_answered int; v_correct int; v_xp int; v_today_xp int;
+  v_day date := (now() at time zone 'Asia/Singapore')::date;
 begin
   select count(*) into v_total from public.practice_items i where i.centre_id = new.centre_id and i.session_id = new.id;
-  select count(*) filter (where a.correct) into v_correct
+  -- Only questions really answered count ("Show the answer" earns nothing).
+  select count(*) filter (where not a.gave_up), count(*) filter (where a.correct) into v_answered, v_correct
     from public.practice_attempts a where a.centre_id = new.centre_id and a.session_id = new.id;
-  v_xp := least(v_total / 5, 3);
+  v_xp := least(v_answered / 5, 3);
+  -- At most 10 practice XP per student per day, so repeating sets can't be farmed.
+  select coalesce(sum(x.amount), 0) into v_today_xp from public.xp_ledger x
+   where x.centre_id = new.centre_id and x.student_id = new.student_id and x.activity_date = v_day
+     and x.reason in ('practice_set', 'practice_accuracy');
+  v_xp := least(v_xp, greatest(10 - v_today_xp, 0));
   if v_xp > 0 then
     insert into public.xp_ledger (centre_id, student_id, reason, amount, source_id, note, activity_date)
     values (new.centre_id, new.student_id, 'practice_set', v_xp, new.id,
-            format('Practice completed · %s/%s correct', v_correct, v_total), (new.finished_at at time zone 'Asia/Singapore')::date)
+            format('Practice completed · %s/%s correct', v_correct, v_total), v_day)
     on conflict (centre_id, student_id, reason, source_id) where source_id is not null do nothing;
-    if v_correct * 5 >= v_total * 4 then
+    if v_correct * 5 >= v_total * 4 and v_today_xp + v_xp < 10 then
       insert into public.xp_ledger (centre_id, student_id, reason, amount, source_id, note, activity_date)
-      values (new.centre_id, new.student_id, 'practice_accuracy', 1, new.id, '80% or more correct',
-              (new.finished_at at time zone 'Asia/Singapore')::date)
+      values (new.centre_id, new.student_id, 'practice_accuracy', 1, new.id, '80% or more correct', v_day)
       on conflict (centre_id, student_id, reason, source_id) where source_id is not null do nothing;
     end if;
   end if;
@@ -101,6 +108,24 @@ $$;
 create trigger practice_attempts_award after insert on public.practice_attempts
   for each row execute function app.award_practice_activity();
 
+-- The database, not the browser, decides when a part was completed.
+create or replace function app.stamp_lesson_completion()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.status = 'completed' then
+    new.completed_at := case when tg_op = 'UPDATE' and old.status = 'completed' then old.completed_at else now() end;
+  else
+    new.completed_at := null;
+  end if;
+  return new;
+end;
+$$;
+create trigger lesson_progress_stamp before insert or update on public.lesson_progress
+  for each row execute function app.stamp_lesson_completion();
+
 -- A lesson part is finished for the first time.
 create or replace function app.award_lesson_part()
 returns trigger
@@ -111,10 +136,10 @@ begin
   if new.status = 'completed' and (tg_op = 'INSERT' or old.status is distinct from 'completed') then
     insert into public.xp_ledger (centre_id, student_id, reason, amount, source_id, note, activity_date)
     select new.centre_id, new.student_id, 'lesson_part', 1, new.lesson_part_id,
-           left('Lesson part completed: ' || p.title, 200), (new.completed_at at time zone 'Asia/Singapore')::date
+           left('Lesson part completed: ' || p.title, 200), (now() at time zone 'Asia/Singapore')::date
     from public.lesson_parts p where p.centre_id = new.centre_id and p.id = new.lesson_part_id
     on conflict (centre_id, student_id, reason, source_id) where source_id is not null do nothing;
-    perform app.award_streak(new.centre_id, new.student_id, new.completed_at);
+    perform app.award_streak(new.centre_id, new.student_id, now());
   end if;
   return null;
 end;
@@ -137,7 +162,7 @@ as $$
     select x.* from public.xp_ledger x, me where x.centre_id = p_centre and x.student_id = me.id
   ),
   days as (
-    select distinct x.activity_date as d from ledger x where x.reason = 'streak_bonus'
+    select distinct x.activity_date as d from ledger x, today t where x.reason = 'streak_bonus' and x.activity_date <= t.d
   ),
   runs as (
     select min(d) as first_day, max(d) as last_day, count(*) as len
@@ -198,14 +223,15 @@ revoke all on function app.award_lesson_part() from public, authenticated;
 -- Backfill: XP for learning done before this migration (same rules, once).
 -- ---------------------------------------------------------------------------
 insert into public.xp_ledger (centre_id, student_id, reason, amount, source_id, note, activity_date, created_at)
-select s.centre_id, s.student_id, 'practice_set', least(t.total / 5, 3), s.id,
+select s.centre_id, s.student_id, 'practice_set', least(t.answered / 5, 3), s.id,
        format('Practice completed · %s/%s correct', t.correct, t.total), (s.finished_at at time zone 'Asia/Singapore')::date, s.finished_at
 from public.practice_sessions s
 cross join lateral (
   select (select count(*) from public.practice_items i where i.centre_id = s.centre_id and i.session_id = s.id)::int as total,
+         (select count(*) from public.practice_attempts a where a.centre_id = s.centre_id and a.session_id = s.id and not a.gave_up)::int as answered,
          (select count(*) from public.practice_attempts a where a.centre_id = s.centre_id and a.session_id = s.id and a.correct)::int as correct
 ) t
-where s.finished_at is not null and t.total >= 5
+where s.finished_at is not null and t.answered >= 5
 on conflict do nothing;
 
 insert into public.xp_ledger (centre_id, student_id, reason, amount, source_id, note, activity_date, created_at)
@@ -213,9 +239,10 @@ select s.centre_id, s.student_id, 'practice_accuracy', 1, s.id, '80% or more cor
 from public.practice_sessions s
 cross join lateral (
   select (select count(*) from public.practice_items i where i.centre_id = s.centre_id and i.session_id = s.id)::int as total,
+         (select count(*) from public.practice_attempts a where a.centre_id = s.centre_id and a.session_id = s.id and not a.gave_up)::int as answered,
          (select count(*) from public.practice_attempts a where a.centre_id = s.centre_id and a.session_id = s.id and a.correct)::int as correct
 ) t
-where s.finished_at is not null and t.total >= 5 and t.correct * 5 >= t.total * 4
+where s.finished_at is not null and t.answered >= 5 and t.correct * 5 >= t.total * 4
 on conflict do nothing;
 
 insert into public.xp_ledger (centre_id, student_id, reason, amount, source_id, note, activity_date, created_at)
@@ -236,3 +263,80 @@ from (
 ) x
 order by centre_id, student_id, d, at
 on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- submit_practice_answer, unchanged except that it now locks the session row first, so
+-- two answers sent at the same moment can't leave a finished set unmarked (and unrewarded).
+-- ---------------------------------------------------------------------------
+create or replace function public.submit_practice_answer(p_session uuid, p_position int, p_response jsonb)
+returns jsonb
+language plpgsql security definer
+set search_path = ''
+as $$
+declare
+  v_centre uuid; v_student uuid; v_course uuid;
+  v_question uuid; v_version int;
+  v_key jsonb; v_gave_up boolean; v_correct boolean;
+  v_choices int;
+begin
+  select s.centre_id, s.student_id, s.course_id into v_centre, v_student, v_course
+  from public.practice_sessions s where s.id = p_session
+  for update;  -- one answer at a time per session, so the last answer always finishes the set
+  if v_student is null or v_student is distinct from app.my_student_id(v_centre) then
+    raise exception 'not your practice session' using errcode = '42501';
+  end if;
+  if exists (select 1 from public.practice_attempts a where a.centre_id = v_centre and a.session_id = p_session and a.position = p_position) then
+    return app.practice_result(v_centre, p_session, p_position);
+  end if;
+  if not app.has_course_access(v_student, v_course) then
+    raise exception 'no active programme for this course' using errcode = '42501';
+  end if;
+  if not app.has_consent(v_centre, v_student, 'service') then
+    raise exception 'consent required' using errcode = '42501', hint = 'consent';
+  end if;
+
+  select i.question_id, i.question_version into v_question, v_version
+  from public.practice_items i where i.centre_id = v_centre and i.session_id = p_session and i.position = p_position;
+  if v_question is null then raise exception 'no such question in this session' using errcode = '22023'; end if;
+  select k.key into v_key from public.question_keys k
+  where k.centre_id = v_centre and k.question_id = v_question and k.version = v_version;
+
+  v_gave_up := coalesce((p_response ->> 'gave_up')::boolean, false);
+  if not v_gave_up then
+    -- Only the two answer shapes, of sensible size.
+    if v_key #>> '{answer,kind}' = 'choice' then
+      select jsonb_array_length(v.content -> 'choices') into v_choices from public.question_versions v
+      where v.centre_id = v_centre and v.question_id = v_question and v.version = v_version;
+      if jsonb_typeof(p_response -> 'choice') is distinct from 'number' or (p_response ->> 'choice')::numeric not between 1 and v_choices
+         or (p_response ->> 'choice')::numeric <> trunc((p_response ->> 'choice')::numeric) then
+        raise exception 'choose one of the options' using errcode = '22023';
+      end if;
+      p_response := jsonb_build_object('choice', (p_response ->> 'choice')::int);
+    else
+      if jsonb_typeof(p_response -> 'parts') is distinct from 'array' or jsonb_array_length(p_response -> 'parts') > 6
+         or exists (select 1 from jsonb_array_elements(p_response -> 'parts') x
+                    where jsonb_typeof(x) <> 'string' or length(x #>> '{}') > 200) then
+        raise exception 'answer is not in the expected form' using errcode = '22023';
+      end if;
+      p_response := jsonb_build_object('parts', p_response -> 'parts');
+    end if;
+    v_correct := app.mark_answer(v_key -> 'answer', p_response);
+  else
+    p_response := null;
+    v_correct := false;
+  end if;
+
+  insert into public.practice_attempts (centre_id, student_id, session_id, position, question_id, question_version, response, correct, gave_up)
+  values (v_centre, v_student, p_session, p_position, v_question, v_version, p_response, v_correct, v_gave_up);
+
+  update public.practice_sessions s set finished_at = now()
+  where s.id = p_session and s.finished_at is null
+    and not exists (
+      select 1 from public.practice_items i
+      where i.centre_id = v_centre and i.session_id = p_session
+        and not exists (select 1 from public.practice_attempts a
+                        where a.centre_id = v_centre and a.session_id = p_session and a.position = i.position));
+
+  return app.practice_result(v_centre, p_session, p_position);
+end;
+$$;
