@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { connection } from "next/server";
 
 import { publicEnv } from "@/lib/env";
 
@@ -11,9 +12,11 @@ import { publicEnv } from "@/lib/env";
  *
  * Create a new client per request; never share one across requests.
  * With Cache Components enabled, anything that calls this reads cookies and
- * must render inside a <Suspense> boundary.
+ * must render inside a <Suspense> boundary. `connection()` marks the work as request-time,
+ * so the auth library's use of the clock (Date.now) isn't treated as part of a prerender.
  */
 export async function createClient() {
+  await connection();
   const cookieStore = await cookies();
   const env = publicEnv();
 
