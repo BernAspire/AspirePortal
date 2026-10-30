@@ -10,8 +10,14 @@ select test.expect(public.apply_revision_offers('a0000000-0000-0000-0000-0000000
   jsonb_build_object('course_id', 'c0000000-0000-0000-0000-000000000001', 'title', 'Old Holiday Camp', 'topic', 'Rewards topic',
                      'sections', '[1]'::jsonb, 'starts_on', current_date - 60, 'ends_on', current_date - 1)
 )), 2, 'offers: the centre''s offers are loaded');
+select test.expect((select count(*) from public.revision_offers where title = 'Rewards Intensive' and whole_topic), 1,
+  'offers: a blank sub-topic list covers the whole topic (including sub-topics added later)');
 select test.expect((select count(*) from public.revision_offer_sections s join public.revision_offers o on o.id = s.offer_id
-  where o.title = 'Rewards Intensive' and s.section_id = test.mixed()), 1, 'offers: a blank sub-topic list covers the whole topic');
+  where o.title = 'Old Holiday Camp' and s.section_id = test.mixed()), 1, 'offers: listed sub-topics are linked');
+select test.expect_error($q$select public.apply_revision_offers('a0000000-0000-0000-0000-000000000000', jsonb_build_array(
+  jsonb_build_object('course_id', 'c0000000-0000-0000-0000-000000000001', 'title', 'Dup', 'topic', 'Rewards topic', 'sections', '[]'::jsonb),
+  jsonb_build_object('course_id', 'c0000000-0000-0000-0000-000000000001', 'title', 'dup ', 'topic', 'Rewards topic', 'sections', '[1]'::jsonb)))$q$,
+  '22023', 'offers: a title listed twice fails the load');
 select test.expect_error($q$select public.apply_revision_offers('a0000000-0000-0000-0000-000000000000', jsonb_build_array(
   jsonb_build_object('course_id', 'c0000000-0000-0000-0000-000000000001', 'title', 'X', 'topic', 'No such topic', 'sections', '[]'::jsonb)))$q$,
   '22023', 'offers: an unknown topic fails the load');
@@ -19,6 +25,18 @@ select test.expect_error($q$select public.apply_revision_offers('a0000000-0000-0
   jsonb_build_object('course_id', 'c0000000-0000-0000-0000-000000000001', 'title', 'X', 'topic', 'Rewards topic', 'sections', '[42]'::jsonb)))$q$,
   '22023', 'offers: an unknown sub-topic number fails the load');
 select test.expect((select count(*) from public.revision_offers where title = 'X'), 0, 'offers: a failed load saves nothing');
+
+-- One spreadsheet is one transaction: a bad offer also undoes the file's exam dates.
+select test.expect_error($q$select public.apply_timetable_file('a0000000-0000-0000-0000-000000000000', '{}'::jsonb,
+  jsonb_build_array(jsonb_build_object('course_id', 'c0000000-0000-0000-0000-000000000001', 'name', 'Atomic exam', 'exam_on', current_date + 9)),
+  jsonb_build_array(jsonb_build_object('course_id', 'c0000000-0000-0000-0000-000000000001', 'title', 'Y', 'topic', 'Nope', 'sections', '[]'::jsonb)))$q$,
+  '22023', 'file: a bad offer fails the whole spreadsheet');
+select test.expect((select count(*) from public.exam_dates where name = 'Atomic exam'), 0, 'file: nothing from the failed spreadsheet is saved');
+select test.expect((public.apply_timetable_file('a0000000-0000-0000-0000-000000000000', '{}'::jsonb, '[]'::jsonb, '[]'::jsonb) ->> 'offers')::int, 0,
+  'file: an empty Offers sheet keeps the offers');
+select test.expect((select count(*) from public.revision_offers), 2, 'file: (offers kept)');
+select test.expect_error($q$update public.revision_offers set topic_id = (select id from public.question_topics where course_id <> 'c0000000-0000-0000-0000-000000000001' limit 1)$q$,
+  '23514', 'offers: the topic must belong to the offer''s course');
 
 -- ---------------------------------------------------------------------------
 -- 2. Who sees them
@@ -38,8 +56,15 @@ values ('a0000000-0000-0000-0000-000000000000', 'a4000000-0000-0000-0000-0000000
 begin;
 select test.login('aaaaaaaa-0000-0000-0000-000000000003');
 set local role authenticated;
+select test.expect(jsonb_array_length(public.my_revision_offers('a0000000-0000-0000-0000-000000000000')), 0,
+  'offers: none while the sub-topic is not weak for her');
+commit;
+update public.revision_states set confidence = 1 where section_id = test.mixed();
+begin;
+select test.login('aaaaaaaa-0000-0000-0000-000000000003');
+set local role authenticated;
 create temp table ro as select public.my_revision_offers('a0000000-0000-0000-0000-000000000000') as r;
-select test.expect(jsonb_array_length((select r from ro)), 1, 'offers: with consent, current offers only (the ended camp is hidden)');
+select test.expect(jsonb_array_length((select r from ro)), 1, 'offers: with consent and a weak sub-topic, current offers only (the ended camp is hidden)');
 select test.expect((((select r from ro) -> 0 -> 'section_ids') ? test.mixed()::text)::int, 1, 'offers: each offer lists the sub-topics it covers');
 select test.expect((((select r from ro) -> 0) ? 'price')::int, 0, 'offers: students never get a price');
 commit;

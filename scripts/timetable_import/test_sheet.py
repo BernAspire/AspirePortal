@@ -131,7 +131,9 @@ class OfferTests(unittest.TestCase):
             ["P6", "Science", "Whole-topic camp", None, "Energy", None, None, None],
             ["P6", "Science", "holiday intensive", None, "Energy", 2, None, None],
             ["P6", "Science", "Bad", None, None, "one", "2/1/2027", "1/1/2027"],
+            ["P6", "Science", "Camp", "Only $380, 10% off", "Energy", None, None, None],
         ]))
+        self.assertIn("Offers row 6: Offer and Description must not mention a price or fee: students see this text (ADR 0010)", tt.errors)
         self.assertEqual(tt.offers[0]["sections"], [1, 3])
         self.assertEqual(tt.offers[1]["sections"], [])
         self.assertIn("Offers row 4: holiday intensive is listed twice for P6 Science", tt.errors)

@@ -25,7 +25,7 @@ Rules worth knowing:
 - The database refuses a room or a teacher in two sessions at the same time, and more students than the class's Seats.
 - Times are Singapore time.
 - **Exams:** listing a course's exams replaces its upcoming centre exams (one removed from the sheet disappears for students, and any Before-Exam Mode on it ends). Leave the sheet empty to keep them. Students' own exams are never touched.
-- **Offers:** a student sees an offer only if one of its sub-topics is weak for them **and** their guardian gave marketing consent. Students never see a price or a way to pay. The topic must already be in the question bank (import it first). Listing a course's offers replaces that course's offers.
+- **Offers:** a student sees an offer only if one of its sub-topics is weak for them **and** their guardian gave marketing consent. Students never see a price or a way to pay. The topic must already be in the question bank (import it first). Listing a course's offers replaces that course's offers. **To stop an offer,** set its Until date (removing its row only works while another offer for that course is still listed). Prices and fees in the text are refused.
 
 ## Each time
 

@@ -16,14 +16,15 @@ export const getMyRevision = cache(async (centreId: string): Promise<MyRevision 
 });
 
 /**
- * Offers the student may be shown. The database returns nothing without the guardian's
- * marketing consent (ADR 0010); the page shows only those matching a weak sub-topic.
+ * Offers the student may be shown: the database returns only current offers covering one of their
+ * weak sub-topics, and nothing without the guardian's marketing consent (ADR 0010).
  */
 export const getMyRevisionOffers = cache(async (centreId: string): Promise<RevisionOffer[]> => {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("my_revision_offers", { p_centre: centreId });
   if (error) return []; // a recommendation is never worth breaking the page for
-  return z.array(revisionOfferRow).parse(data ?? []);
+  const parsed = z.array(revisionOfferRow).safeParse(data ?? []);
+  return parsed.success ? parsed.data : [];
 });
 
 /** Unresolved bookmarked question ids and when they were bookmarked, newest first. */

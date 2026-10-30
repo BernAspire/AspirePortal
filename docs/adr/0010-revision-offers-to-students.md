@@ -14,6 +14,12 @@ The owner's Smart Revision recording shows a "Recommended for you" area. CLAUDE.
 4. **Entered by staff in the timetable spreadsheet** (new **Offers** sheet: Level, Subject, Offer, Description, Topic, Sub-topics, From date, Until date), loaded by the import job through `public.apply_revision_offers` (service role). Listing a course's offers replaces that course's offers. An unknown topic or sub-topic number fails the whole file.
 5. **Access:** `revision_offers` and `revision_offer_sections` are readable and writable by staff of the centre only. Students and guardians have no direct table access; students read through the consent-gated function.
 
+6. **Hardening (from independent review):** the weak-topic match is enforced in the database, not just on the page. A blank sub-topic list means the whole topic, including sub-topics added later. An offer's sub-topics must belong to its topic and its topic to its course. A whole spreadsheet (timetable, exam dates, offers) is saved in one transaction (`apply_timetable_file`). The importer refuses prices and fees in offer text.
+
+## Open point for the owner
+
+`app.has_consent` counts any active marketing consent. Consents collected before this decision were for marketing to guardians; the marketing consent wording (and its `policy_version`) should say that offers may also be shown to the child in Smart Revision. Until it does, staff should only record marketing consent with the updated wording. If two guardians both consented, both must withdraw for offers to stop.
+
 ## Consequences
 
 - CLAUDE.md's PDPA line is updated to match: offers go to guardians, and to students only as decided here, always with guardian marketing consent and never with a payment step for students.

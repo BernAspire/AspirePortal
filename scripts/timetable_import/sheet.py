@@ -55,6 +55,7 @@ STATUSES = {"present": "present", "p": "present", "late": "late", "l": "late",
 STATUS_LABELS = ["Present", "Late", "Absent", "Excused"]
 
 CODE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$")
+PRICE = re.compile(r"\$|\bS?GD\b|\bdollars?\b|\bprice\b|\bfees?\b|\bcost\b|\bdiscount\b|%\s*off\b", re.IGNORECASE)
 CLIENT_CODE = re.compile(r"^[A-Za-z0-9]{3,8}$")
 MONTHS = {m: i + 1 for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"])}
 
@@ -469,6 +470,8 @@ def read_rows(sheets: dict[str, list[tuple]]) -> Timetable:
         description = text(r["Description"])
         if description and len(description) > 300:
             e.append(f"{w}: Description is longer than 300 characters")
+        if any(PRICE.search(t or "") for t in (title, description)):
+            e.append(f"{w}: Offer and Description must not mention a price or fee: students see this text (ADR 0010)")
         topic = text(r["Topic"])
         if not topic:
             e.append(f"{w}: Topic must be a question bank topic, e.g. Whole Numbers")

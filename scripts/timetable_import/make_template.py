@@ -59,7 +59,9 @@ GUIDE = [
     ("Topic is a question bank topic for that course; Sub-topics are its section numbers (leave blank for the whole topic). "
      "A student sees an offer only when one of those sub-topics is weak for them AND their guardian gave marketing consent. "
      "Students never see a price or a way to pay: they are told to ask a parent or the centre.", False),
-    ("Listing a course's offers replaces that course's offers; leave the sheet empty to keep them. From / Until date are optional.", False),
+    ("Listing a course's offers replaces that course's offers; leave the sheet empty to keep them. From / Until date are optional. "
+     "To stop an offer, set its Until date (or remove its row while listing another offer for the same course). "
+     "Don't put prices or fees in the text: the upload refuses them.", False),
     ("", False),
     ("Example (Classes)", True),
     ("P5MA-SAT-0900 | P5 | Mathematics | Physical tutorial | Bishan | Room 1 | Ms Lim | Sat | 09:00 | 120 | "

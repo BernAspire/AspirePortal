@@ -9,7 +9,7 @@ Usage:
   # Import every .xlsx in the `timetable-inbox` bucket for one centre (the GitHub job does this):
   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python3 import_timetable.py inbox --centre aspire-hub
 
-Each file is applied in one database transaction (public.apply_timetable): if anything is
+Each file is applied in one database transaction (public.apply_timetable_file): if anything is
 wrong, nothing from that file is saved. The service-role key is used only here, in a job,
 never in the app (CLAUDE.md rule 5).
 """
@@ -62,17 +62,11 @@ def database_message(err: Exception) -> str:
 
 def apply(sb: Supabase, centre_id: str, tt: Timetable) -> dict:
     course_ids: dict[CourseRef, str] = {c: ensure_course(sb, centre_id, c) for c in tt.courses}  # type: ignore[arg-type]
-    body = json.dumps({"p_centre": centre_id, "p_data": tt.payload(course_ids)}).encode()
-    out = json.loads(sb._request("POST", "/rest/v1/rpc/apply_timetable", body, {"Content-Type": "application/json"}))
-    out["exams"] = 0
-    if tt.exams:
-        body = json.dumps({"p_centre": centre_id, "p_exams": tt.exam_payload(course_ids)}).encode()
-        out["exams"] = json.loads(sb._request("POST", "/rest/v1/rpc/apply_exam_dates", body, {"Content-Type": "application/json"}))
-    out["offers"] = 0
-    if tt.offers:
-        body = json.dumps({"p_centre": centre_id, "p_offers": tt.offer_payload(course_ids)}).encode()
-        out["offers"] = json.loads(sb._request("POST", "/rest/v1/rpc/apply_revision_offers", body, {"Content-Type": "application/json"}))
-    return out
+    # One call, one database transaction (public.apply_timetable_file): the timetable, exam dates
+    # and offers are saved together or not at all.
+    body = json.dumps({"p_centre": centre_id, "p_data": tt.payload(course_ids), "p_exams": tt.exam_payload(course_ids),
+                       "p_offers": tt.offer_payload(course_ids)}).encode()
+    return json.loads(sb._request("POST", "/rest/v1/rpc/apply_timetable_file", body, {"Content-Type": "application/json"}))
 
 
 def cmd_inbox(args: argparse.Namespace) -> int:
