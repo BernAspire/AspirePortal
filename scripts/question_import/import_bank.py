@@ -22,6 +22,7 @@ import os
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lesson_import"))
@@ -38,13 +39,24 @@ IMAGES = "question-images"
 def upload_figures(sb: Supabase, bank: BankV2, prefix: str, tmp: Path) -> None:
     """Puts each figure in private storage at {prefix}{sha}.{ext}; worked-solution figures go
     under {prefix}solutions/, which students can open only once they've answered (ADR 0011)."""
-    for folder, names in (("", bank.question_figures), ("solutions/", bank.solution_figures)):
-        for name in sorted(names):
-            raw = bank.images[name]
-            local = tmp / f"fig-{name}"
-            local.write_bytes(raw)
-            sb.upload(IMAGES, prefix + folder + name, local, "image/png" if name.endswith(".png") else "image/jpeg")
-            local.unlink()
+    jobs = [(folder, name) for folder, names in (("", bank.question_figures), ("solutions/", bank.solution_figures)) for name in sorted(names)]
+
+    def put(job: tuple[str, str]) -> None:
+        folder, name = job
+        local = tmp / f"fig-{folder.strip('/') or 'q'}-{name}"
+        local.write_bytes(bank.images[name])
+        for attempt in range(3):  # brief network hiccups shouldn't fail a whole topic
+            try:
+                sb.upload(IMAGES, prefix + folder + name, local, "image/png" if name.endswith(".png") else "image/jpeg")
+                break
+            except Exception:
+                if attempt == 2:
+                    raise
+                time.sleep(2 * (attempt + 1))
+        local.unlink()
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(put, jobs))  # re-raises the first failure; the topic is then not imported
 
 
 def cmd_check(args: argparse.Namespace) -> int:
