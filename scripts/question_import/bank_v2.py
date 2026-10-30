@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 IMG_PREFIX = "@img/"  # replaced by centres/{centre}/question-bank/images/{course}/ at import
+SOL_PREFIX = "@sol/"  # worked-solution figures: …/images/{course}/solutions/, never listable by students
 MAX_TEXT = 4000
 MAX_IMAGE_BYTES = 2_000_000
 MAX_PARTS = 8
@@ -124,7 +125,9 @@ def answer_parts(answer: str) -> list[dict]:
 class BankV2:
     sections: list[dict] = field(default_factory=list)
     questions: list[dict] = field(default_factory=list)
-    images: dict[str, bytes] = field(default_factory=dict)  # sha256 → PNG/JPEG bytes
+    images: dict[str, bytes] = field(default_factory=dict)  # "sha256.png" → PNG/JPEG bytes
+    question_figures: set[str] = field(default_factory=set)  # names used in question text
+    solution_figures: set[str] = field(default_factory=set)  # names used in worked solutions
     errors: list[str] = field(default_factory=list)
 
     def payload(self) -> dict:
@@ -183,10 +186,12 @@ def convert_v2(data: dict) -> BankV2:
         figures[n] = f"{sha}.{ext}"
         return figures[n]
 
-    def text_block(s: str, *, part: bool = False) -> dict:
+    def text_block(s: str, *, part: bool = False, solution: bool = False) -> dict:
         m = _IMG.fullmatch(s.strip())
         if m:
-            return {"type": "image", "path": IMG_PREFIX + figure(int(m[1]), ""), "width": max(40, min(int(m[2]), 1000))}
+            name = figure(int(m[1]), "")
+            (bank.solution_figures if solution else bank.question_figures).add(name)
+            return {"type": "image", "path": (SOL_PREFIX if solution else IMG_PREFIX) + name, "width": max(40, min(int(m[2]), 1000))}
         if _IMG.search(s):
             raise _Bad("a figure must be on a line of its own")
         if len(s) > MAX_TEXT:
@@ -240,6 +245,22 @@ def convert_v2(data: dict) -> BankV2:
             stem = q.get("q")
             if not isinstance(stem, list) or not stem:
                 raise _Bad("question text must be a list of lines")
+            # Multiple choice written into the question text: "(1) 81 026" … "(4) …" lines and an
+            # answer starting "(2)". The page could only mark these by typed text; make them choices.
+            inline_choices: list[str] = []
+            if q.get("o") is None and re.match(r"^\(\d\)", answer.strip()):
+                tail = []
+                for x in reversed(stem):
+                    m = re.match(r"^\((\d)\)\s+(\S.*)$", x.strip(), re.DOTALL) if isinstance(x, str) else None
+                    if not m:
+                        break
+                    tail.insert(0, (int(m[1]), m[2]))
+                if 2 <= len(tail) <= 6 and [n for n, _ in tail] == list(range(1, len(tail) + 1)) \
+                        and not any(_IMG.search(t) for _, t in tail) and int(answer.strip()[1]) <= len(tail):
+                    inline_choices = [t for _, t in tail]
+                    stem = stem[: len(stem) - len(tail)]
+                    if not stem:
+                        raise _Bad("question text is only options")
             blocks = []
             for x in stem:
                 if isinstance(x, dict) and "table" in x:
@@ -266,13 +287,17 @@ def convert_v2(data: dict) -> BankV2:
                         else:
                             steps.append({"type": "equation", "rows": [row]})
                     elif line.strip():
-                        steps.append(text_block(line, part=bool(re.fullmatch(r"\([a-d]\)", line.strip()))))
+                        steps.append(text_block(line, part=bool(re.fullmatch(r"\([a-d]\)", line.strip())), solution=True))
                 else:
                     raise _Bad("worked steps have an unknown kind of line")
 
             options = q.get("o")
             choices = None
-            if options is not None:
+            if inline_choices:
+                choices = [rich(o) for o in inline_choices]
+                spec = {"kind": "choice", "correct": int(answer.strip()[1])}
+                labels = [""]
+            elif options is not None:
                 if not isinstance(options, list) or not 2 <= len(options) <= 6 or not all(isinstance(o, str) and o.strip() for o in options):
                     raise _Bad("options must be 2–6 pieces of text")
                 if any(_IMG.search(o) for o in options):
@@ -290,7 +315,9 @@ def convert_v2(data: dict) -> BankV2:
                 if any(not p["text"] for p in parts):
                     raise _Bad("an answer part is empty")
                 labels = [p["label"] for p in parts]
-                if q.get("draw") or any(is_open(p["text"]) for p in parts):
+                # Drawings, sentences and answers with a tolerance ("34° (accept 33°–35°)") can't be
+                # marked by matching: the student checks them against the worked solution.
+                if q.get("draw") or any(is_open(p["text"]) or re.search(r"\baccept\b", p["text"], re.IGNORECASE) for p in parts):
                     spec = {"kind": "self"}
                     labels = [""]
                 else:

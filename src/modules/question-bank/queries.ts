@@ -36,8 +36,11 @@ function collectFigures(v: unknown, into: Set<string>): void {
 function addSources<T>(v: T, urls: ReadonlyMap<string, string>): T {
   if (Array.isArray(v)) return v.map((x: unknown) => addSources(x, urls)) as T;
   if (isFigure(v)) {
+    // Only a URL signed here is ever used; anything stored with the figure is dropped.
+    const rest: Record<string, unknown> = { ...v };
+    delete rest.src;
     const src = urls.get(v.path);
-    return (src ? { ...v, src } : v) as T;
+    return (src ? { ...rest, src } : rest) as T;
   }
   if (typeof v === "object" && v !== null) {
     return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, addSources(x, urls)])) as T;
@@ -132,7 +135,8 @@ export async function getQuestionVersions(
   const sectionTitles = new Map(z.array(sectionRow).parse(sData).map((s) => [s.id, s.title]));
 
   const out = new Map<string, QuestionView>();
-  const signed = await withFigureUrls(versions);
+  const wanted = new Set(items.map((i) => `${i.questionId}:${i.version}`));
+  const signed = await withFigureUrls(versions.filter((v) => wanted.has(`${v.question_id}:${v.version}`)));
   for (const item of items) {
     const q = questions.get(item.questionId);
     const v = signed.find((x) => x.question_id === item.questionId && x.version === item.version);

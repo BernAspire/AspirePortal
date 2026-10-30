@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from bank import parse_name, read_file
-from bank_v2 import IMG_PREFIX, answer_parts, convert_v2, is_open, plain, rich
+from bank_v2 import IMG_PREFIX, SOL_PREFIX, answer_parts, convert_v2, is_open, plain, rich
 
 PNG = "data:image/png;base64," + base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"x" * 20).decode()
 DATA = {
@@ -25,6 +25,10 @@ DATA = {
          "q": ["Explain."], "a": "No, because the tens digit is less than 5.", "k": ["Look at the tens digit."]},
         {"id": "Q0004", "s": "WN-A", "d": 1, "p": "A", "src": "P", "g": "Q0004", "draw": 1,
          "q": ["Draw the next pattern."], "a": "A row of 6 circles", "k": []},
+        {"id": "Q0005", "s": "WN-A", "d": 1, "p": "A", "src": "P", "g": "Q0005",
+         "q": ["Which is heaviest?", "(1)  1050 g", "(2)  1550 g", "(3)  1500 g"], "a": "(2) 1550 g", "k": []},
+        {"id": "Q0006", "s": "WN-A", "d": 1, "p": "A", "src": "P", "g": "Q0006",
+         "q": ["Measure the angle."], "a": "34° (accept 33°–35°)", "k": []},
     ],
 }
 
@@ -57,10 +61,17 @@ class ConvertTests(unittest.TestCase):
         b = convert_v2(DATA)
         self.assertEqual(b.errors, [])
         self.assertEqual(b.sections, [{"number": 1, "title": "Numbers to 10 Million"}, {"number": 2, "title": "Four Operations"}])
-        q1, q2, q3, q4 = b.questions
+        q1, q2, q3, q4, q5, q6 = b.questions
+        self.assertEqual(q5["key"]["answer"], {"kind": "choice", "correct": 2})  # options written in the text
+        self.assertEqual(q5["content"]["choices"], [["1050 g"], ["1550 g"], ["1500 g"]])
+        self.assertEqual(len(q5["content"]["blocks"]), 1)
+        self.assertEqual(q6["key"]["answer"], {"kind": "self"})  # a tolerance can't be matched
+        self.assertTrue(q2["key"]["steps"][2]["path"].startswith(SOL_PREFIX))  # solution figures kept apart
         self.assertEqual(q1["key"]["answer"], {"kind": "choice", "correct": 1})
         self.assertEqual(q1["content"]["choices"][1], ["2", {"frac": [["1"], ["2"]]}])
         image = q1["content"]["blocks"][1]
+        image_name = image["path"][len(IMG_PREFIX):]
+        self.assertEqual((b.question_figures, b.solution_figures), ({image_name}, {image_name}))
         self.assertEqual(image["type"], "image")
         self.assertTrue(image["path"].startswith(IMG_PREFIX) and image["path"].endswith(".png"))
         self.assertEqual(len(b.images), 1)  # the same figure used twice is stored once
@@ -99,7 +110,7 @@ class ConvertTests(unittest.TestCase):
             path = Path(tmp) / "P5 - Mathematics - Topic 1 - Whole Numbers.html"
             path.write_text(page(DATA), encoding="utf-8")
             info, bank, _ = read_file(path)
-            self.assertEqual((bank.errors, info.position, len(bank.questions)), ([], 1, 4))
+            self.assertEqual((bank.errors, info.position, len(bank.questions)), ([], 1, 6))
 
 
 if __name__ == "__main__":

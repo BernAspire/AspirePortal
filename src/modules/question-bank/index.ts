@@ -5,6 +5,7 @@ export { QuestionBlocks, QuestionTable, RichText, WorkedSteps } from "./render/q
 export {
   blockSchema,
   DIFFICULTY_LABEL,
+  questionLabel,
   type Block,
   type Difficulty,
   type PracticeSection,

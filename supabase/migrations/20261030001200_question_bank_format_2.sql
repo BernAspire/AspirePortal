@@ -18,7 +18,9 @@ as $$
          (b ->> 'type' = 'paragraph' and jsonb_typeof(b -> 'text') = 'string' and length(b ->> 'text') <= 4000)
          or (b ->> 'type' = 'paragraph' and jsonb_typeof(b -> 'rich') = 'array' and length(b ->> 'rich') <= 20000)
          or (b ->> 'type' = 'table' and jsonb_typeof(b -> 'rows') = 'array' and jsonb_array_length(b -> 'rows') between 1 and 50)
-         or (b ->> 'type' = 'image' and jsonb_typeof(b -> 'path') = 'string' and jsonb_typeof(b -> 'width') = 'number')
+         or (b ->> 'type' = 'image' and jsonb_typeof(b -> 'path') = 'string' and jsonb_typeof(b -> 'width') = 'number'
+             and (b ->> 'width')::numeric between 1 and 2000
+             and not exists (select 1 from jsonb_object_keys(b) k where k not in ('type', 'path', 'width')))
        ))
      and (p -> 'choices' is null or jsonb_typeof(p -> 'choices') = 'null'
           or (jsonb_typeof(p -> 'choices') = 'array' and jsonb_array_length(p -> 'choices') between 2 and 6))
@@ -44,7 +46,9 @@ $$;
 -- Marking
 -- ---------------------------------------------------------------------------
 -- Numbers in an answer, in order. As the bank pages: "cm2"/"m³" don't count as numbers,
--- and "12 345" is one number unless a "/" follows (so "1 500/1000" stays three numbers).
+-- "12 345" is one number unless a "/" follows (so "1 500/1000" stays three numbers), and
+-- ".36" is 0.36. A minus sign makes a number negative only at the start or after a space or
+-- "(" ("-5", "(−3)"), never between numbers ("33°–35°" is 33 and 35).
 create or replace function app.answer_numbers(p text)
 returns numeric[]
 language sql immutable
@@ -56,7 +60,7 @@ as $$
              '(\d)[ ,](?=\d{3}(?![0-9/]))', '\1', 'g'), '(\d)[ ,](?=\d{3}(?![0-9/]))', '\1', 'g') as s
   )
   select coalesce(array_agg(m.v[1]::numeric order by m.n), '{}')
-  from norm, regexp_matches(norm.s, '((?:(?<![0-9])-)?\d+(?:\.\d+)?)', 'g') with ordinality as m(v, n);
+  from norm, regexp_matches(norm.s, '((?:(?<![^\s(])-)?\d*\.?\d+)', 'g') with ordinality as m(v, n);
 $$;
 
 -- One answer box: numbers must match in order; answers without numbers compare letters; an
@@ -248,11 +252,14 @@ begin
     select * from jsonb_to_recordset(p_data -> 'questions') as x(
       ref text, "group" text, section int, difficulty int, strategy text, marks int, source text, content jsonb, key jsonb)
   loop
-    -- Figures (image blocks) must point into this centre's and course's figure folder.
+    -- Figures (image blocks) must point into this centre's and course's figure folder; figures in
+    -- answer keys (worked solutions) into its solutions/ folder, which students can't open early.
     select string_agg(p #>> '{}', ', ') into v_bad
-      from jsonb_path_query(jsonb_build_array(r.content, r.key), 'lax $.**.path') p
-     where jsonb_typeof(p) <> 'string'
-        or (p #>> '{}') !~ ('^' || v_prefix || '[0-9a-f]{64}\.(png|jpg)$');
+      from (select p from jsonb_path_query(r.content, 'lax $.**.path') p
+             where jsonb_typeof(p) <> 'string' or (p #>> '{}') !~ ('^' || v_prefix || '[0-9a-f]{64}\.(png|jpg)$')
+            union all
+            select p from jsonb_path_query(r.key, 'lax $.**.path') p
+             where jsonb_typeof(p) <> 'string' or (p #>> '{}') !~ ('^' || v_prefix || 'solutions/[0-9a-f]{64}\.(png|jpg)$')) x;
     if v_bad is not null then raise exception 'Question %: figure path not allowed: %', r.ref, v_bad; end if;
 
     select s.id into v_section from public.question_sections s
@@ -304,9 +311,11 @@ revoke all on function public.import_question_bank(uuid, uuid, text, text, text,
 grant execute on function public.import_question_bank(uuid, uuid, text, text, text, jsonb) to service_role;
 
 -- ---------------------------------------------------------------------------
--- Figures: private bucket, path centres/{centre}/question-bank/images/{course}/{sha}.{ext}.
--- Readable by the centre's staff and by families whose programme covers that course today
--- (rule 12). Only the import job writes; nobody lists.
+-- Figures: private bucket at centres/{centre}/question-bank/images/{course}/{sha}.{ext}.
+-- Question figures: the centre's staff and families whose programme covers the course today
+-- (rule 12). Worked-solution figures (…/{course}/solutions/…): staff, and a student only for a
+-- question in their own practice that they have answered, or that is self-checked (they open
+-- its solution to mark it). Only the import job writes.
 -- ---------------------------------------------------------------------------
 create or replace function app.can_read_question_image(p_name text)
 returns boolean
@@ -315,10 +324,26 @@ set search_path = ''
 as $$
 declare
   m text[] := regexp_match(p_name,
-    '^centres/([0-9a-f-]{36})/question-bank/images/([0-9a-f-]{36})/[0-9a-f]{64}\.(png|jpg)$');
+    '^centres/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/question-bank/images/'
+    || '([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/(solutions/)?[0-9a-f]{64}\.(png|jpg)$');
+  v_centre uuid; v_course uuid; v_student uuid;
 begin
   if m is null then return false; end if;
-  return app.is_staff(m[1]::uuid) or app.can_learn_course(m[1]::uuid, m[2]::uuid);
+  v_centre := m[1]::uuid; v_course := m[2]::uuid;
+  if app.is_staff(v_centre) then return true; end if;
+  if m[3] is null then return app.can_learn_course(v_centre, v_course); end if;
+  v_student := app.my_student_id(v_centre);
+  if v_student is null or not app.has_course_access(v_student, v_course) then return false; end if;
+  return exists (
+    select 1
+    from public.practice_sessions s
+    join public.practice_items i on i.centre_id = s.centre_id and i.session_id = s.id
+    join public.question_keys k on k.centre_id = i.centre_id and k.question_id = i.question_id and k.version = i.question_version
+    where s.centre_id = v_centre and s.student_id = v_student and s.course_id = v_course
+      and (k.key #>> '{answer,kind}' = 'self'
+           or exists (select 1 from public.practice_attempts a
+                      where a.centre_id = i.centre_id and a.session_id = i.session_id and a.position = i.position))
+      and strpos(k.key::text, '"' || p_name || '"') > 0);
 end;
 $$;
 revoke all on function app.can_read_question_image(text) from public;

@@ -38,6 +38,11 @@ export const contentSchema = z.object({
 });
 export type QuestionContent = z.infer<typeof contentSchema>;
 
+/** How a question number is shown: "1.4e" → "Q1.4e", "Q0001" stays "Q0001". */
+export function questionLabel(ref: string): string {
+  return /^Q/i.test(ref) ? ref : `Q${ref}`;
+}
+
 export const DIFFICULTY_LABEL = { 1: "Easy", 2: "Medium", 3: "Challenging" } as const;
 export type Difficulty = keyof typeof DIFFICULTY_LABEL;
 

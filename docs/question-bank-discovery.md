@@ -140,10 +140,19 @@ both formats (`scripts/question_import/bank.py` for format 1, `bank_v2.py` for f
   inline lists, e.g. `["3", {"frac": [["2"], ["7"]]}]`, and drawn as stacked fractions.
 - `[[img:N:W]]` is figure N, W pixels wide. Always alone on its line. Stored in private storage
   (`question-images`, `centres/{centre}/question-bank/images/{course}/{sha256}.png`) and shown with
-  short-lived signed URLs.
+  short-lived signed URLs. Figures in worked solutions (1,549 of them, many being the drawn answers)
+  go under `…/{course}/solutions/`, which a student can open only for a question they have answered
+  in their own practice (or a self-checked one, whose solution they open to mark it).
 - A worked-step line starting with a tab, `"\tArea\t= 6 × 9"`, is an equation row; consecutive
   rows line up their equals signs. `"(a)"` alone starts a part. Tabs elsewhere become spaces.
 - `"(a)\t…"` in question text starts a part.
+
+## Multiple choice written into the question text
+
+325 questions have no `o` list: their options are the last question lines, `"(1)  81 026"` …
+`"(4)  …"`, and the answer starts with the option number (`"(2) 1550 g"`). The page could only mark
+these by typed text (option number *and* value), so a student typing the value was marked wrong.
+The importer turns them into ordinary multiple choice (the option lines leave the question text).
 
 ## Answer checking in the page (ported)
 
@@ -152,11 +161,14 @@ same way in the database:
 - answers split into boxes on `;` when labelled `(a)`…`(h)`, `(i)`…`(vi)`, or `Label: value`;
   otherwise one box (so `"(4)"` is one box expecting 4). Up to 7 boxes seen (8 allowed);
 - fractions compare in text form (`3 2/7`); numbers must match in order; `cm²`, `m3` are units,
-  not numbers; spaces/commas in thousands are ignored unless a `/` follows;
+  not numbers; spaces/commas in thousands are ignored unless a `/` follows; `.36` reads as 0.36;
+  a dash between numbers (`33°–35°`) is not a minus sign (a leading `-5` still is). Checked against
+  the page's own `same()` on 33,822 typed variants of the real answers: no differences;
 - answers without numbers compare letters; a symbol-only answer (`÷`) compares the symbol;
-- sentence answers (the page's `isOpen`: "because", "explain", long wordy answers …) and `draw`
-  questions are **self-checked**: the student sees the worked solution and says whether they got
-  it right (owner, 30 Oct 2026). The page instead accepted any attempt. 195 questions in the 13 files;
-  a question with any such part is self-checked as a whole.
+- sentence answers (the page's `isOpen`: "because", "explain", long wordy answers …), answers with
+  a tolerance (`"34° (accept 33°–35°)"`) and `draw` questions are **self-checked**: the student sees
+  the worked solution and says whether they got it right (owner, 30 Oct 2026). The page instead
+  accepted any sentence and marked tolerance answers by exact numbers. 208 questions in the 13
+  files; a question with any such part is self-checked as a whole.
 - The page's "Mark as correct / Mark as wrong" override buttons are not carried over: automatic
   marking stays on the server.

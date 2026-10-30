@@ -23,15 +23,22 @@ figures, aligned worked steps, draw-on-paper questions. Details: `docs/question-
 - One importer reads both formats; format 2 content uses structured inline text with fractions,
   `image` blocks with storage paths, and `equation` blocks. Format 1 content is unchanged.
 - Figures go to a private `question-images` bucket at
-  `centres/{centre}/question-bank/images/{course}/{sha256}.{png|jpg}` (rule 8). The import function
-  refuses any figure path outside that centre's and course's folder. Storage RLS lets a user read
-  a figure only if they are the centre's staff or can learn that course today (rule 12). Pages get
-  1-hour signed URLs made with the user's own session.
-- Marking (database) now ignores unit powers (`cm²`, `m3`), keeps "1 500/1000" as three numbers,
-  compares symbol-only answers, allows up to 8 answer boxes and a `self` answer kind.
+  `centres/{centre}/question-bank/images/{course}/{sha256}.{png|jpg}` (rule 8); figures in worked
+  solutions under `…/{course}/solutions/`. The import function refuses any figure path outside
+  that centre's and course's folder (and solution figures outside `solutions/`), and figures can't
+  carry their own link. Storage RLS: question figures for the centre's staff or anyone who can
+  learn that course today (rule 12); solution figures for staff, or a student for a question in
+  their own practice that they have answered or that is self-checked. Pages get 1-hour signed URLs
+  made with the user's own session.
+- Multiple choice written into question text becomes ordinary multiple choice (325 questions).
+- Marking (database) now matches the bank pages: it ignores unit powers (`cm²`, `m3`), keeps
+  "1 500/1000" as three numbers, reads ".36" as 0.36, doesn't treat a dash between numbers as a
+  minus sign, compares symbol-only answers, allows up to 8 answer boxes and a `self` answer kind.
+  These rules also apply to the format 1 bank.
 
 ## Consequences
 
-- Self-checked answers can be claimed right without being right; they are capped like all
-  practice XP (10/day) and are a small share of questions (195 of 5,921, about 3%).
+- Self-checked answers can be claimed right without being right (also without opening the
+  solution). They then count like any right answer: XP (capped at 10/day), bookmarks resolved,
+  spaced reviews and weak topics. They are a small share of questions (208 of 5,921, about 3.5%).
 - Re-importing a topic file updates it (new versions for edited questions; history kept).
