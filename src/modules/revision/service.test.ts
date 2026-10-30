@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Exam, RevisionSection } from "./schema";
-import { dayStreak, examPlan, todaysTasks, upcomingReviews, weaknessOf, weakTopics, weekStats } from "./service";
+import { dayStreak, examPlan, matchOffers, todaysTasks, upcomingReviews, weaknessOf, weakTopics, weekStats } from "./service";
 
 function s(over: Partial<RevisionSection>): RevisionSection {
   return {
@@ -105,5 +105,20 @@ describe("exam plan", () => {
     expect(one.dailyTarget).toBe(1);
     const many = Array.from({ length: 50 }, (_, i) => s({ sectionId: `m${i}`, tried: 5, correct: 0 }));
     expect(examPlan({ sections: many, exams: [exam], weekReviews: [], today: "2026-11-07" }, exam).dailyTarget).toBe(5);
+  });
+});
+
+describe("recommended offers", () => {
+  const offer = (id: string, sectionIds: string[]) => ({ id, courseId: "c", title: id, description: null, sectionIds });
+  it("shows only offers covering a weak sub-topic, best match first", () => {
+    const sections = [
+      s({ sectionId: "strong", tried: 10, correct: 10 }),
+      s({ sectionId: "weak1", tried: 10, correct: 2 }),
+      s({ sectionId: "weak2", tried: 10, correct: 6 }),
+    ];
+    const out = matchOffers([offer("strongOnly", ["strong"]), offer("one", ["weak2"]), offer("two", ["weak1", "weak2"]), offer("x", ["weak1"])], sections, 3);
+    expect(out.map((m) => m.offer.id)).toEqual(["two", "x", "one"]);
+    expect(out[0].sections.map((x) => x.sectionId)).toEqual(["weak1", "weak2"]);
+    expect(matchOffers([offer("strongOnly", ["strong"])], sections)).toEqual([]);
   });
 });

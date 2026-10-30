@@ -1,4 +1,4 @@
-import type { Exam, MyRevision, RevisionSection, WeekReview } from "./schema";
+import type { Exam, MyRevision, RevisionOffer, RevisionSection, WeekReview } from "./schema";
 
 /**
  * Smart Revision rules (ADR 0009). Sub-topics are question sections. A sub-topic is weak
@@ -133,4 +133,20 @@ export function nextExam(exams: readonly Exam[]): Exam | null {
 
 export function daysUntil(today: string, day: string): number {
   return daysBetween(today, day);
+}
+
+export interface OfferMatch {
+  readonly offer: RevisionOffer;
+  /** The student's weak sub-topics this offer covers, weakest first. */
+  readonly sections: readonly RevisionSection[];
+}
+
+/** Offers covering at least one weak sub-topic, best match first (most weak sub-topics, then weakest). */
+export function matchOffers(offers: readonly RevisionOffer[], sections: readonly RevisionSection[], limit = 2): OfferMatch[] {
+  const weak = weakTopics(sections, "accuracy");
+  return offers
+    .map((offer) => ({ offer, sections: weak.filter((s) => offer.sectionIds.includes(s.sectionId)) }))
+    .filter((m) => m.sections.length > 0)
+    .sort((a, b) => b.sections.length - a.sections.length || weak.indexOf(a.sections[0]) - weak.indexOf(b.sections[0]))
+    .slice(0, limit);
 }

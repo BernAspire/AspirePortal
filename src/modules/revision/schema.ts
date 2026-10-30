@@ -56,6 +56,12 @@ export const myRevisionRow = z
   .transform((r) => ({ today: r.today, sections: r.sections, exams: r.exams, reviewDays: r.review_days, weekReviews: r.week_reviews }));
 export type MyRevision = z.infer<typeof myRevisionRow>;
 
+/** A centre offer the student may be shown ("Recommended for you"); never carries a price. */
+export const revisionOfferRow = z
+  .object({ id: z.uuid(), course_id: z.uuid(), title: z.string(), description: z.string().nullable(), section_ids: z.array(z.uuid()) })
+  .transform((r) => ({ id: r.id, courseId: r.course_id, title: r.title, description: r.description, sectionIds: r.section_ids }));
+export type RevisionOffer = z.infer<typeof revisionOfferRow>;
+
 export const confidenceInput = z.object({ sectionId: z.uuid(), confidence: z.number().int().min(1).max(5).nullable() });
 export const bookmarkInput = z.object({ questionId: z.uuid(), on: z.boolean() });
 export const examInput = z.object({

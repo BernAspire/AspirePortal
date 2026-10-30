@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 
+import { getMyRevisionOffers } from "@/modules/revision";
+
 import { ClassesSkeleton } from "../_components/class-ui";
 import { REVISION_PATH } from "../_components/nav-config";
 
@@ -19,6 +21,7 @@ export default function RevisionHomePage() {
 
 async function RevisionHome() {
   const ctx = await loadRevision(REVISION_PATH);
+  const offers = ctx.revision ? await getMyRevisionOffers(ctx.centreId) : [];
 
-  return <RevisionHomeView ctx={ctx} />;
+  return <RevisionHomeView ctx={ctx} offers={offers} />;
 }

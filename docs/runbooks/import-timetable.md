@@ -14,6 +14,7 @@ Start from `docs/templates/timetable-template.xlsx` (in GitHub, open the file an
 | **Cancellations** | cancelled session | Class code + date (e.g. public holidays) |
 | **Attendance** | student at a session | Present, Late, Absent or Excused; only for sessions that have started |
 | **Exams** | exam for a course | Level, subject, exam name and date, e.g. P6 · Mathematics · PSLE · 26/9/2027. Students see it in Smart Revision → Before-Exam Mode. |
+| **Offers** | programme to recommend | Level, subject, offer name, short description, question bank topic, sub-topic numbers (blank = whole topic), optional From / Until dates. Shown in Smart Revision → "Recommended for you". |
 
 Rules worth knowing:
 - **Each upload that lists a class replaces its upcoming sessions.** Past sessions, their bookings and attendance never change.
@@ -24,6 +25,7 @@ Rules worth knowing:
 - The database refuses a room or a teacher in two sessions at the same time, and more students than the class's Seats.
 - Times are Singapore time.
 - **Exams:** listing a course's exams replaces its upcoming centre exams (one removed from the sheet disappears for students, and any Before-Exam Mode on it ends). Leave the sheet empty to keep them. Students' own exams are never touched.
+- **Offers:** a student sees an offer only if one of its sub-topics is weak for them **and** their guardian gave marketing consent. Students never see a price or a way to pay. The topic must already be in the question bank (import it first). Listing a course's offers replaces that course's offers. **To stop an offer,** set its Until date (removing its row only works while another offer for that course is still listed). Prices and fees in the text are refused.
 
 ## Each time
 

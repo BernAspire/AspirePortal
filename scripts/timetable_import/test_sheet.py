@@ -3,13 +3,13 @@ import unittest
 from datetime import date, datetime, time
 from pathlib import Path
 
-from sheet import (ATTENDANCE, CANCELLATIONS, CLASSES, COLUMNS, EXAMS, ONE_OFFS, STUDENTS, CellError, CourseRef, parse_date,
+from sheet import (ATTENDANCE, CANCELLATIONS, CLASSES, COLUMNS, EXAMS, OFFERS, ONE_OFFS, STUDENTS, CellError, CourseRef, parse_date,
                    parse_level, parse_time, read_rows, read_workbook)
 
 
 def sheets(**rows):
     names = {"classes": CLASSES, "students": STUDENTS, "one_offs": ONE_OFFS, "cancellations": CANCELLATIONS,
-             "attendance": ATTENDANCE, "exams": EXAMS}
+             "attendance": ATTENDANCE, "exams": EXAMS, "offers": OFFERS}
     return {names[k]: [tuple(COLUMNS[names[k]])] + [tuple(r) for r in v] for k, v in rows.items()}
 
 
@@ -124,6 +124,29 @@ class ExamTests(unittest.TestCase):
         self.assertEqual((tt.errors, tt.exams), ([], []))
 
 
+class OfferTests(unittest.TestCase):
+    def test_offers(self):
+        tt = read_rows(sheets(offers=[
+            ["P6", "science", "Holiday Intensive", "Four extra lessons", "Energy", "1, 3", "1/11/2026", "15/12/2026"],
+            ["P6", "Science", "Whole-topic camp", None, "Energy", None, None, None],
+            ["P6", "Science", "holiday intensive", None, "Energy", 2, None, None],
+            ["P6", "Science", "Bad", None, None, "one", "2/1/2027", "1/1/2027"],
+            ["P6", "Science", "Camp", "Only $380, 10% off", "Energy", None, None, None],
+        ]))
+        self.assertIn("Offers row 6: Offer and Description must not mention a price or fee: students see this text (ADR 0010)", tt.errors)
+        self.assertEqual(tt.offers[0]["sections"], [1, 3])
+        self.assertEqual(tt.offers[1]["sections"], [])
+        self.assertIn("Offers row 4: holiday intensive is listed twice for P6 Science", tt.errors)
+        self.assertIn("Offers row 5: Topic must be a question bank topic, e.g. Whole Numbers", tt.errors)
+        self.assertIn("Offers row 5: Sub-topics must be sub-topic numbers like 1, 3 (got 'one')", tt.errors)
+        self.assertIn("Offers row 5: Until date is before From date", tt.errors)
+        payload = tt.offer_payload({CourseRef("P6", "Science"): "c1"})
+        self.assertEqual(payload[0], {"course_id": "c1", "title": "Holiday Intensive", "description": "Four extra lessons",
+                                      "topic": "Energy", "sections": [1, 3], "starts_on": "2026-11-01", "ends_on": "2026-12-15"})
+        self.assertIsNone(payload[1]["starts_on"])
+        self.assertIn(CourseRef("P6", "Science"), tt.courses)
+
+
 class WorkbookTests(unittest.TestCase):
     def test_template_round_trip(self):
         from make_template import build
@@ -134,7 +157,7 @@ class WorkbookTests(unittest.TestCase):
             build(path)
             empty = read_workbook(path)
             self.assertEqual((empty.errors, empty.summary()),
-                             ([], "0 classes, 0 student places, 0 one-off sessions, 0 cancellations, 0 attendance marks, 0 exam dates"))
+                             ([], "0 classes, 0 student places, 0 one-off sessions, 0 cancellations, 0 attendance marks, 0 exam dates, 0 offers"))
             wb = load_workbook(path)
             row = list(CLASS_ROW)
             row[8], row[10], row[11] = time(9, 0), datetime(2027, 1, 2), datetime(2027, 12, 25)  # real Excel cells
